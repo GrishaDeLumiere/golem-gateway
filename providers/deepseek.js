@@ -6,6 +6,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const { PORT } = require('../config');
 
 // Импорты утилит провайдера
 const AuthInstaller = require('../authInstaller');
@@ -16,7 +17,7 @@ puppeteer.use(StealthPlugin());
 let browser;
 let page;
 let isInitializing = false;
-let currentPort = 7777;
+let currentPort = PORT;
 const networkStreamEvents = new EventEmitter();
 
 // Актуальный реестр моделей (Instant = V4 Flash, Expert = V4 Pro)
@@ -60,7 +61,7 @@ function renewAuth() {
     openInDefaultBrowser(`http://127.0.0.1:${currentPort}/install-auth`);
 }
 
-async function initProvider(port = 7777) {
+async function initProvider(port = PORT) {
     currentPort = port;
     isInitializing = true;
 
