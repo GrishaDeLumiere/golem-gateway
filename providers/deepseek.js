@@ -19,16 +19,21 @@ let isInitializing = false;
 let currentPort = 7777;
 const networkStreamEvents = new EventEmitter();
 
+// Актуальный реестр моделей (Instant = V4 Flash, Expert = V4 Pro)
 const MODELS = [
-    { id: "deepseek-fast", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-fast-search", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-fast-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-fast-search-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-expert", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-expert-search", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-expert-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-expert-search-think", object: "model", owned_by: "deepseek-system" }
+    // Базовая (Instant / Fast)
+    { id: "deepseek-v4-flash", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-flash-search", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-flash-think", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-flash-search-think", object: "model", owned_by: "deepseek-system" },
+
+    // Продвинутая (Expert / Pro)
+    { id: "deepseek-v4-pro", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-pro-search", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-pro-think", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-pro-search-think", object: "model", owned_by: "deepseek-system" }
 ];
+
 
 // Утилиты
 function openInDefaultBrowser(url) {
@@ -178,9 +183,10 @@ async function handleChatCompletion(req, res) {
         await new Promise(r => setTimeout(r, 1000));
     }
 
+    // Парсинг модификаторов из красивых ID
     const wantsSearch = requestedModel.includes('search');
     const wantsThink = requestedModel.includes('think');
-    const wantsExpert = requestedModel.includes('expert');
+    const wantsExpert = requestedModel.includes('expert') || requestedModel.includes('pro');
 
     await page.evaluate((search, think, expert) => {
         const targetModelType = expert ? "expert" : "default";
