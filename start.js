@@ -1,5 +1,6 @@
 // start.js
 
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
@@ -21,7 +22,6 @@ deepseekProvider.setupRoutes(app, PORT);
 // 2. УНИВЕРСАЛЬНЫЕ ЭНДПОИНТЫ API
 // ==========================================
 app.get(['/', '/v1', '/v1/models'], (req, res) => {
-    // Динамически собираем поддерживаемые модели со всех провайдеров
     const models = [
         ...deepseekProvider.MODELS,
         // ...chatgptProvider.MODELS
@@ -37,13 +37,10 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
     console.log(`\n[📥 РОУТЕР] Поступил запрос на модель: ${requestedModel}`);
 
     try {
-        // МАРШРУТИЗАЦИЯ: Если модель начинается на "deepseek"
         if (requestedModel.startsWith('deepseek')) {
             await deepseekProvider.handleChatCompletion(req, res);
         }
-        // МАРШРУТИЗАЦИЯ: Если модель начинается на "gpt" (Задел на будущее)
         else if (requestedModel.startsWith('gpt')) {
-            // await chatgptProvider.handleChatCompletion(req, res);
             res.status(501).json({ error: { message: "Провайдер ChatGPT еще в разработке." } });
         }
         else {
@@ -63,8 +60,8 @@ app.listen(PORT, async () => {
     console.log(`[🚀] МОДУЛЬНОЕ ЯДРО СТАРТОВАЛО. Порт: ${PORT}`);
     console.log(`[⚙️] Поднимаю провайдеров из теней...`);
 
-    // Инициализируем браузеры/api провайдеров
-    await deepseekProvider.initProvider();
+    // ПЕРЕДАЕМ ПОРТ ДЛЯ АВТОРИЗАЦИИ
+    await deepseekProvider.initProvider(PORT);
 
     console.log(`[✨] Сцена окончательно готова. Жду указаний, госпожа.`);
     console.log(`===============================================`);
