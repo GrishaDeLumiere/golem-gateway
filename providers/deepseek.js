@@ -8,7 +8,7 @@ const path = require('path');
 const { exec } = require('child_process');
 
 // Импорты утилит провайдера
-const AuthInstaller = require('../authInstaller'); // Выходим на папку выше
+const AuthInstaller = require('../authInstaller');
 const { renderSearchBlock } = require('../searchRenderer');
 
 puppeteer.use(StealthPlugin());
@@ -16,9 +16,9 @@ puppeteer.use(StealthPlugin());
 let browser;
 let page;
 let isInitializing = false;
+let currentPort = 7777; // Сохраняем порт для открытия браузера
 const networkStreamEvents = new EventEmitter();
 
-// Список поддерживаемых моделей этим провайдером
 const MODELS = [
     { id: "deepseek-fast", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-fast-search", object: "model", owned_by: "deepseek-system" },
@@ -49,11 +49,18 @@ function updateEnv(key, value) {
     process.env[key] = value;
 }
 
-// Экспортируемые методы
-async function initProvider() {
+function renewAuth() {
+    console.log('\n[!] DeepSeek: ВНИМАНИЕ: Токен мертв или отсутствует.');
+    console.log(`[*] DeepSeek: Открываю локальную страницу авторизации...`);
+    openInDefaultBrowser(`http://127.0.0.1:${currentPort}/install-auth`);
+}
+
+async function initProvider(port = 7777) {
+    currentPort = port;
     isInitializing = true;
+
     if (!process.env.SESSION_TOKEN || !process.env.COOKIES) {
-        console.log('\n[!] DeepSeek: Токен мертв или отсутствует. Нужна авторизация.');
+        renewAuth();
         return;
     }
 
@@ -119,9 +126,10 @@ async function initProvider() {
     await page.goto('https://chat.deepseek.com', { waitUntil: 'networkidle2' });
 
     if (page.url().includes('sign_in')) {
-        console.error('[!] DeepSeek: Сессия протухла. Нужна новая авторизация.');
+        console.error('[!] DeepSeek: Сессия протухла. Начинаю сброс...');
         await browser.close();
         browser = null;
+        renewAuth();
         return;
     }
 
@@ -141,7 +149,7 @@ function setupRoutes(app, port) {
             console.log('\n[+] DeepSeek: ПЕЙЛОАД ПЕРЕХВАЧЕН! Токен сохранен.');
             res.send('OK');
             if (browser) await browser.close().catch(() => { }).finally(() => browser = null);
-            await initProvider();
+            await initProvider(currentPort);
         } else {
             res.status(400).send('Ошибка данных');
         }
@@ -150,7 +158,7 @@ function setupRoutes(app, port) {
 
 async function handleChatCompletion(req, res) {
     if (isInitializing || !page || page.isClosed()) {
-        return res.status(503).json({ error: { message: "Провайдер DeepSeek инициализируется.", type: "server_loading" } });
+        return res.status(503).json({ error: { message: "Провайдер DeepSeek инициализируется или ожидает ввода токена.", type: "server_loading" } });
     }
 
     const isStream = req.body.stream;
@@ -160,7 +168,6 @@ async function handleChatCompletion(req, res) {
 
     console.log(`[*] DeepSeek: Запрос обрабатывается...`);
 
-    // Подготовка интерфейса
     const currentUrl = page.url();
     if (!currentUrl.endsWith('chat.deepseek.com/')) await page.goto('https://chat.deepseek.com/', { waitUntil: 'networkidle2' });
     else {
@@ -171,7 +178,6 @@ async function handleChatCompletion(req, res) {
         await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Переключение модификаторов
     const wantsSearch = requestedModel.includes('search');
     const wantsThink = requestedModel.includes('think');
     const wantsExpert = requestedModel.includes('expert');
@@ -183,19 +189,20 @@ async function handleChatCompletion(req, res) {
 
         const spans = Array.from(document.querySelectorAll('span, div'));
         const searchElem = spans.find(s => s.innerText && (s.innerText.includes('Умный поиск') || s.innerText.includes('Search')));
-        if (searchElem && searchElem.closest('div[role="button"], div[role="switch"]')) {
-            const btn = searchElem.closest('div[role="button"], div[role="switch"]');
+        if (searchElem && searchElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]')) {
+            const btn = searchElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]');
             if ((search && btn.getAttribute('aria-checked') !== 'true') || (!search && btn.getAttribute('aria-checked') === 'true')) btn.click();
         }
 
         const thinkElem = spans.find(s => s.innerText && (s.innerText.includes('Глубокое мышление') || s.innerText.includes('DeepThink')));
-        if (thinkElem && thinkElem.closest('div[role="button"], div[role="switch"]')) {
-            const btn = thinkElem.closest('div[role="button"], div[role="switch"]');
+        if (thinkElem && thinkElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]')) {
+            const btn = thinkElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]');
             if ((think && btn.getAttribute('aria-checked') !== 'true') || (!think && btn.getAttribute('aria-checked') === 'true')) btn.click();
         }
     }, wantsSearch, wantsThink, wantsExpert);
 
     await new Promise(r => setTimeout(r, 500));
+    await page.waitForSelector('textarea');
     await page.focus('textarea');
     await page.evaluate((text) => document.execCommand('insertText', false, text), promptText);
     await new Promise(r => setTimeout(r, 300));
@@ -218,9 +225,13 @@ async function handleChatCompletion(req, res) {
 
         for (const line of lines) {
             let cleanLine = line.trim();
-            if (!cleanLine || cleanLine === '[DONE]') continue;
+            if (!cleanLine) continue;
+
             if (cleanLine.startsWith('event: close')) { isFinished = true; continue; }
             if (cleanLine.startsWith('data:')) cleanLine = cleanLine.replace(/^data:\s*/, '');
+            else continue;
+
+            if (cleanLine === '[DONE]') continue;
 
             try {
                 const data = JSON.parse(cleanLine);
@@ -288,7 +299,6 @@ async function handleChatCompletion(req, res) {
         res.json({ id: "ds-chat", object: "chat.completion", model: requestedModel, choices: [{ message: { role: "assistant", content: fullAnswer }, finish_reason: "stop" }] });
     }
 
-    // Очистка сессии
     try {
         const match = page.url().match(/chat\/s\/([a-z0-9-]+)/i);
         if (match && match[1]) {
