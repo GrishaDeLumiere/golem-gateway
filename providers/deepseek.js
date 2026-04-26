@@ -16,7 +16,7 @@ puppeteer.use(StealthPlugin());
 let browser;
 let page;
 let isInitializing = false;
-let currentPort = 7777; // Сохраняем порт для открытия браузера
+let currentPort = 7777;
 const networkStreamEvents = new EventEmitter();
 
 const MODELS = [
