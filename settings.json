@@ -1,0 +1,10 @@
+{
+  "providers": {
+    "deepseek": false,
+    "qwen": true,
+    "chatgpt": false,
+    "gemini": false
+  },
+  "debugMode": true,
+  "defaultModel": "deepseek-v4-flash"
+}

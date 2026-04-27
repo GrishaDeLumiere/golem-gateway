@@ -135,13 +135,10 @@ async function initProvider(port = PORT) {
     }
 
     isInitializing = false;
-    console.log('[+] DeepSeek: Голем на позиции. Стерильный алгоритм активен.');
+    console.log('[+] DeepSeek: Голем на позиции. Алгоритм активен.');
 }
 
 function setupRoutes(app, port) {
-    const authSetupInfoPage = new AuthInstaller(port);
-    authSetupInfoPage.setup(app);
-
     app.post('/receive-payload', async (req, res) => {
         const { token, cookies } = req.body;
         if (token && cookies) {
@@ -238,8 +235,14 @@ async function handleChatCompletion(req, res) {
 
                 if (data?.v?.response?.fragments) {
                     for (const frag of data.v.response.fragments) {
-                        if (frag.type === 'THINK') { isThinkingContext = true; chunkDelta += `<think>\n${frag.content || ''}`; }
-                        else if (frag.type === 'RESPONSE') { if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n</think>\n\n`; } chunkDelta += frag.content || ''; }
+                        if (frag.type === 'THINK') {
+                            if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
+                            chunkDelta += frag.content || '';
+                        }
+                        else if (frag.type === 'RESPONSE') {
+                            if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n\n</think>\n\n`; }
+                            chunkDelta += frag.content || '';
+                        }
                     }
                 }
 
@@ -248,8 +251,14 @@ async function handleChatCompletion(req, res) {
                         if (item.p === 'quasi_status' && item.v === 'FINISHED') isFinished = true;
                         if (item.p === 'fragments' && item.o === 'APPEND' && Array.isArray(item.v)) {
                             for (const frag of item.v) {
-                                if (frag.type === 'THINK') { if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; } chunkDelta += frag.content || ''; }
-                                else if (frag.type === 'RESPONSE') { if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n</think>\n\n`; } chunkDelta += frag.content || ''; }
+                                if (frag.type === 'THINK') {
+                                    if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
+                                    chunkDelta += frag.content || '';
+                                }
+                                else if (frag.type === 'RESPONSE') {
+                                    if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n\n</think>\n\n`; }
+                                    chunkDelta += frag.content || '';
+                                }
                             }
                         }
                     }
@@ -257,8 +266,14 @@ async function handleChatCompletion(req, res) {
 
                 if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
                     for (const frag of data.v) {
-                        if (frag.type === 'THINK') { if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; } chunkDelta += frag.content || ''; }
-                        else if (frag.type === 'RESPONSE') { if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n</think>\n\n`; } chunkDelta += frag.content || ''; }
+                        if (frag.type === 'THINK') {
+                            if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
+                            chunkDelta += frag.content || '';
+                        }
+                        else if (frag.type === 'RESPONSE') {
+                            if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n\n</think>\n\n`; }
+                            chunkDelta += frag.content || '';
+                        }
                     }
                 }
 
@@ -292,7 +307,7 @@ async function handleChatCompletion(req, res) {
             await new Promise(r => setTimeout(r, 1000));
         } else {
             await page.evaluate(() => {
-                const btn = Array.from(document.querySelectorAll('span')).find(s => s.textContent === 'Новый чат' || s.textContent === 'New chat');
+                const btn = Array.from(document.querySelectorAll('span, div')).find(s => s.textContent === 'Новый чат' || s.textContent === 'New chat');
                 if (btn && btn.closest('div[tabindex="0"]')) btn.closest('div[tabindex="0"]').click();
             });
             await new Promise(r => setTimeout(r, 1000));
@@ -354,8 +369,9 @@ async function handleChatCompletion(req, res) {
         }
 
         if (checkAborted()) throw new Error(checkAborted());
+
         if (isThinkingContext) {
-            const closeThink = `\n</think>\n\n`;
+            const closeThink = `\n\n</think>\n\n`;
             fullAnswer += closeThink;
             process.stdout.write(closeThink);
             if (isStream && !res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: closeThink } }] })}\n\n`);
@@ -379,7 +395,7 @@ async function handleChatCompletion(req, res) {
 
     } catch (err) {
         if (err.message.includes('REROLL') || err.message.includes('STOP')) {
-            console.log(`\n[!] DeepSeek[ID: ${myRequestId}]: Запрос прерван. Причина: ${err.message}. Удаляем чат...`);
+            console.log(`\n[!] DeepSeek[ID: ${myRequestId}]: Запрос прерван. Причина: ${err.message}.`);
         } else {
             console.error(`\n[-] Ошибка генерации:`, err.message);
             if (!res.writableEnded) {
@@ -391,7 +407,6 @@ async function handleChatCompletion(req, res) {
         isFinished = true;
         networkStreamEvents.off('chunk', handleChunk);
         networkStreamEvents.off('end', onEnd);
-
         try {
             const match = page.url().match(/chat\/s\/([a-z0-9-]+)/i);
             if (match && match[1]) {
@@ -401,7 +416,7 @@ async function handleChatCompletion(req, res) {
                     if (!tokenRaw) return;
                     await fetch('/api/v0/chat_session/delete', { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${JSON.parse(tokenRaw).value}` }, body: JSON.stringify({ chat_session_id: id }) });
                 }, sessionToKill);
-                console.log(`[+] DeepSeek: Сессия ${sessionToKill} очищена.`);
+                console.log(`[+] DeepSeek: Облачный чат ${sessionToKill} очищен.`);
             }
             await page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
         } catch (e) {
@@ -411,9 +426,21 @@ async function handleChatCompletion(req, res) {
     }
 }
 
+async function unloadProvider() {
+    if (browser) {
+        console.log(`\n[-] DeepSeek: Получен сигнал на отключение. Выгружаем браузер из памяти...`);
+        await browser.close().catch(() => { });
+        browser = null;
+        page = null;
+    }
+    isInitializing = false;
+    isBrowserBusy = false;
+}
+
 module.exports = {
     MODELS,
     initProvider,
     setupRoutes,
-    handleChatCompletion
+    handleChatCompletion,
+    unloadProvider
 };

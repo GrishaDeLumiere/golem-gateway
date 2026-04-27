@@ -1,27 +1,34 @@
-// start.js
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { exec } = require('child_process');
 
-// Подключаем конфиг
 const { PORT } = require('./config');
+const { getSettings } = require('./settings');
 
-// Импортируем наших провайдеров
+const AuthInstaller = require('./authInstaller');
 const deepseekProvider = require('./providers/deepseek');
-const app = express();
+const qwenProvider = require('./providers/qwen');
 
+const app = express();
 app.use(cors());
 app.use(express.json({ limit: '200mb' }));
 
-// 1. Инициализация специфичных роутов провайдеров
-deepseekProvider.setupRoutes(app, PORT);
+// 0. Инициализация Дашборда
+const dashboard = new AuthInstaller(PORT);
+dashboard.setup(app);
 
-// ==========================================
+// 1. Инициализация роутов (только активных)
+const settings = getSettings();
+if (settings.providers.deepseek) deepseekProvider.setupRoutes(app, PORT);
+if (settings.providers.qwen) qwenProvider.setupRoutes(app, PORT);
+
 // 2. УНИВЕРСАЛЬНЫЕ ЭНДПОИНТЫ API
-// ==========================================
-app.get(['/', '/v1', '/v1/models'], (req, res) => {
-    const models = [...deepseekProvider.MODELS];
+app.get(['/v1', '/v1/models'], (req, res) => {
+    const currentSettings = getSettings();
+    let models = [];
+    if (currentSettings.providers.deepseek) models.push(...deepseekProvider.MODELS);
+    if (currentSettings.providers.qwen) models.push(...qwenProvider.MODELS);
     res.json({ object: "list", data: models });
 });
 
@@ -29,14 +36,20 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
     req.setTimeout(0);
     res.setTimeout(0);
 
-    const requestedModel = req.body.model || "deepseek-v4-flash";
-    console.log(`\n[📥 РОУТЕР] Поступил запрос на модель: ${requestedModel}`);
+    const currentSettings = getSettings();
+    const requestedModel = req.body.model || currentSettings.defaultModel;
+
+    if (currentSettings.debugMode) {
+        console.log(`\n[📥 РОУТЕР] Поступил запрос на модель: ${requestedModel}`);
+    }
 
     try {
-        if (requestedModel.startsWith('deepseek')) {
+        if (requestedModel.startsWith('deepseek') && currentSettings.providers.deepseek) {
             await deepseekProvider.handleChatCompletion(req, res);
+        } else if (requestedModel.startsWith('qwen') && currentSettings.providers.qwen) {
+            await qwenProvider.handleChatCompletion(req, res);
         } else {
-            res.status(404).json({ error: { message: `Модель ${requestedModel} не найдена.` } });
+            res.status(403).json({ error: { message: `Модель ${requestedModel} отключена в настройках или не найдена.` } });
         }
     } catch (err) {
         console.error('[❌ РОУТЕР] Ошибка перенаправления:', err.stack);
@@ -44,16 +57,32 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
     }
 });
 
-// ==========================================
 // ЗАПУСК ЯДРА
-// ==========================================
 app.listen(PORT, async () => {
     console.log(`===============================================`);
     console.log(`[🚀] МОДУЛЬНОЕ ЯДРО СТАРТОВАЛО. Порт: ${PORT}`);
-    console.log(`[⚙️] Поднимаю провайдеров из теней...`);
+    console.log(`[🔗] Дашборд управления доступен по адресу: http://127.0.0.1:${PORT}`);
+    openInDefaultBrowser(`http://127.0.0.1:${PORT}`);
 
-    await deepseekProvider.initProvider(PORT);
+    console.log(`[⚙️] Поднимаю активных провайдеров из теней...`);
+
+    const initPromises = [];
+    if (settings.providers.deepseek) initPromises.push(deepseekProvider.initProvider(PORT));
+    if (settings.providers.qwen) initPromises.push(qwenProvider.initProvider(PORT));
+
+    if (initPromises.length > 0) {
+        await Promise.all(initPromises);
+    } else {
+        console.log(`[⚠️] Все провайдеры отключены в настройках!`);
+    }
 
     console.log(`[✨] Сцена окончательно готова. Жду указаний, госпожа.`);
     console.log(`===============================================`);
 });
+
+function openInDefaultBrowser(url) {
+    const platform = process.platform;
+    if (platform === 'win32') exec(`start "" "${url}"`);
+    else if (platform === 'darwin') exec(`open "${url}"`);
+    else exec(`xdg-open "${url}"`);
+}
