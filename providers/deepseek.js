@@ -8,7 +8,6 @@ const path = require('path');
 const { exec } = require('child_process');
 const { PORT } = require('../config');
 
-// Импорты утилит провайдера
 const AuthInstaller = require('../authInstaller');
 const { renderSearchBlock } = require('../searchRenderer');
 
@@ -20,23 +19,17 @@ let isInitializing = false;
 let currentPort = PORT;
 const networkStreamEvents = new EventEmitter();
 
-// Актуальный реестр моделей (Instant = V4 Flash, Expert = V4 Pro)
 const MODELS = [
-    // Базовая (Instant / Fast)
     { id: "deepseek-v4-flash", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-flash-search", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-flash-think", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-flash-search-think", object: "model", owned_by: "deepseek-system" },
-
-    // Продвинутая (Expert / Pro)
     { id: "deepseek-v4-pro", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-pro-search", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-pro-think", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-pro-search-think", object: "model", owned_by: "deepseek-system" }
 ];
 
-
-// Утилиты
 function openInDefaultBrowser(url) {
     const platform = process.platform;
     if (platform === 'win32') exec(`start "" "${url}"`);
@@ -168,23 +161,22 @@ async function handleChatCompletion(req, res) {
     }
 
     const isStream = req.body.stream;
-    let requestedModel = req.body.model || "deepseek-fast";
+    let requestedModel = req.body.model || "deepseek-v4-flash";
     const messages = req.body.messages || [];
     const promptText = messages.map(m => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n---\n\n');
 
-    console.log(`[*] DeepSeek: Запрос обрабатывается...`);
+    console.log(`[*] DeepSeek: Запрос обрабатывается... Модель: ${requestedModel}`);
 
     const currentUrl = page.url();
     if (!currentUrl.endsWith('chat.deepseek.com/')) await page.goto('https://chat.deepseek.com/', { waitUntil: 'networkidle2' });
     else {
         await page.evaluate(() => {
-            const btn = Array.from(document.querySelectorAll('span')).find(s => s.innerText === 'Новый чат' || s.innerText === 'New chat');
+            const btn = Array.from(document.querySelectorAll('span')).find(s => s.textContent === 'Новый чат' || s.textContent === 'New chat');
             if (btn && btn.closest('div[tabindex="0"]')) btn.closest('div[tabindex="0"]').click();
         });
         await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Парсинг модификаторов из красивых ID
     const wantsSearch = requestedModel.includes('search');
     const wantsThink = requestedModel.includes('think');
     const wantsExpert = requestedModel.includes('expert') || requestedModel.includes('pro');
@@ -194,17 +186,18 @@ async function handleChatCompletion(req, res) {
         const modelRadio = document.querySelector(`div[data-model-type="${targetModelType}"]`);
         if (modelRadio && modelRadio.getAttribute('aria-checked') !== 'true') modelRadio.click();
 
-        const spans = Array.from(document.querySelectorAll('span, div'));
-        const searchElem = spans.find(s => s.innerText && (s.innerText.includes('Умный поиск') || s.innerText.includes('Search')));
-        if (searchElem && searchElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]')) {
-            const btn = searchElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]');
-            if ((search && btn.getAttribute('aria-checked') !== 'true') || (!search && btn.getAttribute('aria-checked') === 'true')) btn.click();
+        const toggleButtons = Array.from(document.querySelectorAll('.ds-toggle-button, [role="switch"]'));
+
+        const searchBtn = toggleButtons.find(btn => btn.textContent && (btn.textContent.includes('Умный поиск') || btn.textContent.includes('Search')));
+        if (searchBtn) {
+            const isSelected = searchBtn.classList.contains('ds-toggle-button--selected') || searchBtn.getAttribute('aria-checked') === 'true';
+            if (search !== isSelected) searchBtn.click();
         }
 
-        const thinkElem = spans.find(s => s.innerText && (s.innerText.includes('Глубокое мышление') || s.innerText.includes('DeepThink')));
-        if (thinkElem && thinkElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]')) {
-            const btn = thinkElem.closest('div[role="button"], div[role="switch"], div[role="checkbox"]');
-            if ((think && btn.getAttribute('aria-checked') !== 'true') || (!think && btn.getAttribute('aria-checked') === 'true')) btn.click();
+        const thinkBtn = toggleButtons.find(btn => btn.textContent && (btn.textContent.includes('Глубокое мышление') || btn.textContent.includes('DeepThink')));
+        if (thinkBtn) {
+            const isSelected = thinkBtn.classList.contains('ds-toggle-button--selected') || thinkBtn.getAttribute('aria-checked') === 'true';
+            if (think !== isSelected) thinkBtn.click();
         }
     }, wantsSearch, wantsThink, wantsExpert);
 
@@ -224,6 +217,9 @@ async function handleChatCompletion(req, res) {
     let isFinished = false;
     let sseBuffer = '';
     let searchResults = [];
+
+    // Флаг контекста: думаем мы сейчас или уже отвечаем
+    let isThinkingContext = false;
 
     const handleChunk = (rawText) => {
         sseBuffer += rawText;
@@ -247,30 +243,69 @@ async function handleChatCompletion(req, res) {
                 if (data?.p === 'response/status' && data?.v === 'FINISHED') isFinished = true;
                 if (data?.quasi_status === 'FINISHED') isFinished = true;
 
+                // --- 1. ПЕРЕХВАТ ИНИЦИАЛИЗАЦИИ ФРАГМЕНТОВ ---
                 if (data?.v?.response?.fragments) {
                     for (const frag of data.v.response.fragments) {
-                        if ((frag.type === 'RESPONSE' || frag.type === 'THINK') && frag.content) chunkDelta += frag.content;
+                        if (frag.type === 'THINK') {
+                            isThinkingContext = true;
+                            chunkDelta += `<think>\n`;
+                            if (frag.content) chunkDelta += frag.content;
+                        } else if (frag.type === 'RESPONSE') {
+                            if (isThinkingContext) {
+                                isThinkingContext = false;
+                                chunkDelta += `\n</think>\n\n`;
+                            }
+                            if (frag.content) chunkDelta += frag.content;
+                        }
                     }
                 }
+
+                // --- 2. ПЕРЕХВАТ ПАКЕТОВ BATCH С НОВЫМИ ФРАГМЕНТАМИ ---
                 if (data?.p === 'response' && data?.o === 'BATCH' && Array.isArray(data?.v)) {
                     for (const item of data.v) {
                         if (item.p === 'quasi_status' && item.v === 'FINISHED') isFinished = true;
                         if (item.p === 'fragments' && item.o === 'APPEND' && Array.isArray(item.v)) {
-                            for (const frag of item.v) if ((frag.type === 'RESPONSE' || frag.type === 'THINK') && frag.content) chunkDelta += frag.content;
+                            for (const frag of item.v) {
+                                if (frag.type === 'THINK') {
+                                    if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
+                                    if (frag.content) chunkDelta += frag.content;
+                                } else if (frag.type === 'RESPONSE') {
+                                    if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n</think>\n\n`; }
+                                    if (frag.content) chunkDelta += frag.content;
+                                }
+                            }
                         }
                     }
                 }
+
+                // --- 3. ПЕРЕХВАТ APPEND ФРАГМЕНТОВ В ПРЯМОМ ЭФИРЕ ---
                 if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
-                    for (const frag of data.v) if ((frag.type === 'RESPONSE' || frag.type === 'THINK') && frag.content) chunkDelta += frag.content;
+                    for (const frag of data.v) {
+                        if (frag.type === 'THINK') {
+                            if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
+                            if (frag.content) chunkDelta += frag.content;
+                        } else if (frag.type === 'RESPONSE') {
+                            if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n</think>\n\n`; }
+                            if (frag.content) chunkDelta += frag.content;
+                        }
+                    }
                 }
-                if (typeof data?.v === 'string' && (!data.p || data.p.endsWith('/content'))) chunkDelta += data.v;
+
+                // --- 4. ПЕРЕХВАТ ОБЫЧНЫХ СТРОК (ИДУТ В АКТИВНЫЙ КОНТЕКСТ) ---
+                if (typeof data?.v === 'string' && (!data?.p || data.p.endsWith('/content'))) {
+                    chunkDelta += data.v;
+                }
+
+                // Выцепляем ссылки поиска
                 if (data?.p === 'response/fragments/-1/results' && Array.isArray(data?.v)) searchResults = data.v;
 
+                // Если образовался текст - отправляем клиенту
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
                     process.stdout.write(chunkDelta);
                     if (isStream) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: chunkDelta } }] })}\n\n`);
                 }
+
             } catch (e) { }
         }
     };
@@ -289,6 +324,14 @@ async function handleChatCompletion(req, res) {
     }
 
     networkStreamEvents.off('chunk', handleChunk);
+
+    // Закрываем контекст размышлений, если стрим резко оборвался
+    if (isThinkingContext) {
+        const closeThink = `\n</think>\n\n`;
+        fullAnswer += closeThink;
+        process.stdout.write(closeThink);
+        if (isStream) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: closeThink } }] })}\n\n`);
+    }
 
     if (searchResults.length > 0) {
         const searchBlock = renderSearchBlock(searchResults, true);
