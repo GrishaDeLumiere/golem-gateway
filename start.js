@@ -12,7 +12,7 @@ const deepseekProvider = require('./providers/deepseek');
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '200mb' }));
 
 // 1. Инициализация специфичных роутов провайдеров
 deepseekProvider.setupRoutes(app, PORT);
