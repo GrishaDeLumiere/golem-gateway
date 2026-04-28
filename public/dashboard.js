@@ -170,10 +170,14 @@ async function openGeminiManager() {
 async function fetchGeminiAccounts() {
     try {
         const res = await fetch('/api/gemini/accounts');
+        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+
         currentGeminiDb = await res.json();
         renderGeminiAccounts();
     } catch (e) {
-        console.error("Ошибка загрузки аккаунтов Gemini", e);
+        console.error("Ошибка загрузки аккаунтов Gemini:", e);
+        currentGeminiDb = { active: 0, accounts: [] };
+        renderGeminiAccounts();
     }
 }
 

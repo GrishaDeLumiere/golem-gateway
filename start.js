@@ -22,9 +22,9 @@ dashboard.setup(app);
 
 // 1. Инициализация роутов
 const settings = getSettings();
-if (settings.providers.deepseek) deepseekProvider.setupRoutes(app, PORT);
-if (settings.providers.qwen) qwenProvider.setupRoutes(app, PORT);
-if (settings.providers.gemini) geminiProvider.setupRoutes(app, PORT);
+deepseekProvider.setupRoutes(app, PORT);
+qwenProvider.setupRoutes(app, PORT);
+geminiProvider.setupRoutes(app, PORT);
 
 // 2. УНИВЕРСАЛЬНЫЕ ЭНДПОИНТЫ API
 app.get(['/v1', '/v1/models'], (req, res) => {
