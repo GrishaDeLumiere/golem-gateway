@@ -52,8 +52,6 @@ function updateEnv(key, value) {
 
 function renewAuth() {
     console.log('\n[!] DeepSeek: ВНИМАНИЕ: Токен мертв или отсутствует.');
-    console.log(`[*] DeepSeek: Открываю локальную страницу авторизации...`);
-    openInDefaultBrowser(`http://127.0.0.1:${currentPort}/install-auth`);
 }
 
 async function initProvider(port = PORT) {

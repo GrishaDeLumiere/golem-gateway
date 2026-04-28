@@ -52,7 +52,7 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
             await deepseekProvider.handleChatCompletion(req, res);
         } else if (requestedModel.startsWith('qwen') && currentSettings.providers.qwen) {
             await qwenProvider.handleChatCompletion(req, res);
-        } else if ((requestedModel.startsWith('gemini') || requestedModel.startsWith('gemma')) && currentSettings.providers.gemini) {
+        } else if ((requestedModel.startsWith('gemini') || requestedModel.startsWith('learnlm')) && currentSettings.providers.gemini) {
             await geminiProvider.handleChatCompletion(req, res);
         } else {
             res.status(403).json({ error: { message: `Модель ${requestedModel} отключена в настройках или не найдена.` } });

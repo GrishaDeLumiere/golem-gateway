@@ -5,6 +5,7 @@ const getProviders = require('./providers');
 const { getSettings, saveSettings } = require('./settings');
 const deepseekProvider = require('./providers/deepseek');
 const qwenProvider = require('./providers/qwen');
+const geminiProvider = require('./providers/gemini');
 
 class AuthInstaller {
     constructor(port) {
@@ -52,26 +53,25 @@ class AuthInstaller {
         app.get('/api/settings', (req, res) => res.json(getSettings()));
 
         app.post('/api/settings', async (req, res) => {
-
             this.settingsQueue = this.settingsQueue.then(async () => {
                 const oldSettings = getSettings();
                 const updated = saveSettings(req.body);
 
                 try {
+                    // Динамическая выгрузка/загрузка провайдеров из памяти
                     if (oldSettings.providers.deepseek !== updated.providers.deepseek) {
-                        if (updated.providers.deepseek) {
-                            await deepseekProvider.initProvider(this.port);
-                        } else {
-                            await deepseekProvider.unloadProvider();
-                        }
+                        if (updated.providers.deepseek) await deepseekProvider.initProvider(this.port);
+                        else await deepseekProvider.unloadProvider();
                     }
 
                     if (oldSettings.providers.qwen !== updated.providers.qwen) {
-                        if (updated.providers.qwen) {
-                            await qwenProvider.initProvider(this.port);
-                        } else {
-                            await qwenProvider.unloadProvider();
-                        }
+                        if (updated.providers.qwen) await qwenProvider.initProvider(this.port);
+                        else await qwenProvider.unloadProvider();
+                    }
+
+                    if (oldSettings.providers.gemini !== updated.providers.gemini) {
+                        if (updated.providers.gemini) await geminiProvider.initProvider(this.port);
+                        else await geminiProvider.unloadProvider();
                     }
                 } catch (err) {
                     console.error('[❌ Дашборд] Ошибка при переключении провайдеров:', err);
@@ -85,6 +85,18 @@ class AuthInstaller {
 
             const finalSettings = await this.settingsQueue;
             res.json({ success: true, settings: finalSettings });
+        });
+
+        // <-- НОВЫЙ ЭНДПОИНТ ДЛЯ REAL-TIME ОБНОВЛЕНИЯ ИНТЕРФЕЙСА
+        app.get('/api/ui-state', (req, res) => {
+            const settings = getSettings();
+            const ObjectProviders = getProviders(this.port);
+            const providersMap = ObjectProviders.reduce((acc, p) => { acc[p.id] = p; return acc; }, {});
+            
+            res.json({
+                html: this.getCardsHtml(ObjectProviders, settings),
+                providersMap: providersMap
+            });
         });
 
         app.get('/dashboard.css', (req, res) => { res.type('text/css').sendFile(path.join(publicPath, 'dashboard.css')); });

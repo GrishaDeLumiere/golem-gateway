@@ -80,7 +80,7 @@ async function openSettingsModal() {
 }
 
 async function saveSettings() {
-    const btn = document.querySelector('#settingsModal .btn');
+    const btn = document.getElementById('saveSetBtn');
     const originalText = btn.innerText;
     btn.innerText = 'Применение...';
     btn.disabled = true;
@@ -102,9 +102,22 @@ async function saveSettings() {
             body: JSON.stringify(payload)
         });
 
-        location.reload();
+        const stateRes = await fetch('/api/ui-state');
+        const state = await stateRes.json();
+
+        document.querySelector('.grid').innerHTML = state.html;
+
+        window.__PROVIDERS__ = state.providersMap;
+
+        closeModal();
+        const toast = document.getElementById('toast');
+        toast.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Конфигурация ядра обновлена`;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+
     } catch (err) {
         alert('Ошибка при сохранении конфигурации.');
+    } finally {
         btn.innerText = originalText;
         btn.disabled = false;
     }

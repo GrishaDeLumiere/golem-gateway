@@ -264,7 +264,6 @@ function setupRoutes(app, PORT) {
         } catch (e) { res.status(500).send(`Ошибка получения токена: ${e.message}`); }
     });
 
-    app.get('/v1/models', (req, res) => res.json({ object: "list", data: OPENAI_MODELS }));
     app.get('/v1beta/models', (req, res) => res.json({ models: NATIVE_MODELS }));
 
     app.post(['/v1beta/models/*', '/models/*'], async (req, res) => {
@@ -351,8 +350,6 @@ function setupRoutes(app, PORT) {
             handleError(e, res);
         }
     });
-
-    app.post('/v1/chat/completions', handleChatCompletion);
 }
 
 // --- ТРАНСФОРМЕРЫ (OpenAI -> Gemini) ---
