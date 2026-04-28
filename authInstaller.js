@@ -9,9 +9,10 @@ const qwenProvider = require('./providers/qwen');
 class AuthInstaller {
     constructor(port) {
         this.port = port;
+        this.settingsQueue = Promise.resolve();
     }
 
-getCardsHtml(providers, settings) {
+    getCardsHtml(providers, settings) {
         return providers.map(p => {
             const isDisabledByUser = settings.providers[p.id] === false;
             const isCompletelyDisabled = p.disabled || isDisabledByUser;
@@ -25,52 +26,65 @@ getCardsHtml(providers, settings) {
             }
 
             return `
-            <div class="card ${isCompletelyDisabled ? 'disabled' : ''} ${activeClass}">
-                <div class="card-header">
-                    <div class="card-icon">${p.logo}</div>
-                    <h3 class="card-title">${p.name}</h3>
-                </div>
-                <div class="badge-container" style="--pulse-color: ${p.isAuth && !isCompletelyDisabled ? '16,185,129' : '239,68,68'}">
-                    <div class="pulse-dot ${p.isAuth && !isCompletelyDisabled ? 'auth' : 'no-auth'}"></div>
-                    <span class="status-text">${isCompletelyDisabled ? 'Отключено' : (p.isAuth ? 'Доступ разрешен' : 'Ожидает авторизации')}</span>
-                </div>
-                <button class="btn ${p.isAuth ? 'btn-secondary' : ''}" onclick="openModal('${p.id}')" ${isCompletelyDisabled ? 'disabled' : ''}>
-                    ${btnText}
-                </button>
-            </div>
-            `;
+ <div class="card ${isCompletelyDisabled ? 'disabled' : ''} ${activeClass}">
+ <div class="card-header">
+ <div class="card-icon">${p.logo}</div>
+ <h3 class="card-title">${p.name}</h3>
+ </div>
+ <div class="badge-container" style="--pulse-color: ${p.isAuth && !isCompletelyDisabled ? '16,185,129' : '239,68,68'}">
+ <div class="pulse-dot ${p.isAuth && !isCompletelyDisabled ? 'auth' : 'no-auth'}"></div>
+ <span class="status-text">${isCompletelyDisabled ? 'Отключено' : (p.isAuth ? 'Доступ разрешен' : 'Ожидает авторизации')}</span>
+ </div>
+ <button class="btn ${p.isAuth ? 'btn-secondary' : ''}" onclick="openModal('${p.id}')" ${isCompletelyDisabled ? 'disabled' : ''}>
+ ${btnText}
+ </button>
+ </div>
+ `;
         }).join('');
     }
 
     setup(app) {
         const publicPath = path.join(__dirname, 'public');
         const viewsPath = path.join(__dirname, 'views');
-        
+
         app.use(express.static(publicPath));
 
         app.get('/api/settings', (req, res) => res.json(getSettings()));
 
-        app.post('/api/settings', (req, res) => {
-            const oldSettings = getSettings();
-            const updated = saveSettings(req.body);
+        app.post('/api/settings', async (req, res) => {
 
-            if (oldSettings.providers.deepseek !== updated.providers.deepseek) {
-                if (updated.providers.deepseek) {
-                    deepseekProvider.initProvider(this.port);
-                } else {
-                    deepseekProvider.unloadProvider();
+            this.settingsQueue = this.settingsQueue.then(async () => {
+                const oldSettings = getSettings();
+                const updated = saveSettings(req.body);
+
+                try {
+                    if (oldSettings.providers.deepseek !== updated.providers.deepseek) {
+                        if (updated.providers.deepseek) {
+                            await deepseekProvider.initProvider(this.port);
+                        } else {
+                            await deepseekProvider.unloadProvider();
+                        }
+                    }
+
+                    if (oldSettings.providers.qwen !== updated.providers.qwen) {
+                        if (updated.providers.qwen) {
+                            await qwenProvider.initProvider(this.port);
+                        } else {
+                            await qwenProvider.unloadProvider();
+                        }
+                    }
+                } catch (err) {
+                    console.error('[❌ Дашборд] Ошибка при переключении провайдеров:', err);
                 }
-            }
 
-            if (oldSettings.providers.qwen !== updated.providers.qwen) {
-                if (updated.providers.qwen) {
-                    qwenProvider.initProvider(this.port);
-                } else {
-                    qwenProvider.unloadProvider();
-                }
-            }
+                return updated;
+            }).catch(err => {
+                console.error('[❌ Дашборд] Сбой выполнения очереди настроек:', err);
+                return getSettings();
+            });
 
-            res.json({ success: true, settings: updated });
+            const finalSettings = await this.settingsQueue;
+            res.json({ success: true, settings: finalSettings });
         });
 
         app.get('/dashboard.css', (req, res) => { res.type('text/css').sendFile(path.join(publicPath, 'dashboard.css')); });
