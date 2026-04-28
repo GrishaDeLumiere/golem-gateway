@@ -1,6 +1,6 @@
 {
- "name": "deepseek-golem",
- "version": "1.0.0",
+ "name": "golem-gateway",
+ "version": "0.1.1",
  "description": "Модульный API роутер для нейросетей",
  "main": "start.js",
  "scripts": {
