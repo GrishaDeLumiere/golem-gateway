@@ -10,7 +10,7 @@ echo ===============================================
 echo [!] Инициализация системы...
 echo ===============================================
 
-:: Проверка наличия Node.js в системе
+REM Проверка наличия Node.js в системе
 where node >nul 2>nul
 if %errorlevel% neq 0 (
  echo [!] Ошибка: Node.js не установлен или не добавлен в PATH!
@@ -18,26 +18,27 @@ if %errorlevel% neq 0 (
  exit /b
 )
 
-if not exist "node_modules\" (
- echo [*] Библиотеки не найдены. Начинаю установку...
- echo.
+if exist "node_modules\" (
+ echo [+] Зависимости найдены.
+ goto :run_app
+)
 
- :: CALL обязателен, иначе выполнение прервется после npm.cmd
- call npm install --loglevel=info --progress=true
+echo [*] Библиотеки не найдены. Начинаю установку...
+echo.
 
- if errorlevel 1 (
+REM CALL обязателен, иначе выполнение прервется
+call npm install --loglevel=info --progress=true
+if %errorlevel% neq 0 (
  echo.
  echo [!] Ошибка установки зависимостей!
  pause
  exit /b
- )
-
- echo.
- echo [+] Установка завершена!
-) else (
- echo [+] Зависимости найдены.
 )
 
+echo.
+echo [+] Установка завершена!
+
+:run_app
 echo.
 echo [*] Запуск маршрутизатора...
 echo.
