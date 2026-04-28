@@ -78,7 +78,7 @@
             <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
           </svg>
         </span>
-        <span class="footer-name" style="color: var(--success); font-weight: 600;">v0.1.0</span>
+        <span class="footer-name" style="color: var(--success); font-weight: 600;">v0.1.1</span>
       </a>
     </div>
   </div>
@@ -176,6 +176,17 @@
                 <label class="switch"><input type="checkbox" id="set-qwen"><span class="slider"></span></label>
               </div>
 
+              <div class="setting-item">
+                <div class="setting-icon">
+                  <img src="/gemini.svg" width="24" height="24" alt="Gemini">
+                </div>
+                <div class="setting-info">
+                  <h4>Адаптер Gemini</h4>
+                  <p style="font-size: 12px;">Gemini Code Assist and Gemini CLI.</p>
+                </div>
+                <label class="switch"><input type="checkbox" id="set-gemini"><span class="slider"></span></label>
+              </div>
+
               <div class="setting-item" style="opacity: 0.6;">
                 <div class="setting-icon">
                   <img src="/chatgpt.svg" width="24" height="24" alt="ChatGPT">
@@ -185,16 +196,6 @@
                   <p>Экспериментальный модуль. Находится в разработке.</p>
                 </div>
                 <label class="switch"><input type="checkbox" id="set-chatgpt" disabled><span class="slider"></span></label>
-              </div>
-              <div class="setting-item" style="opacity: 0.6;">
-                <div class="setting-icon">
-                  <img src="/gemini.svg" width="24" height="24" alt="Gemini">
-                </div>
-                <div class="setting-info">
-                  <h4>Адаптер Gemini</h4>
-                  <p>Экспериментальный модуль. Находится в разработке.</p>
-                </div>
-                <label class="switch"><input type="checkbox" id="set-gemini" disabled><span class="slider"></span></label>
               </div>
 
             </div>
@@ -234,6 +235,91 @@
       </div>
     </div>
   </div>
+
+  <!-- Модальное окно Gemini Account Manager -->
+  <div class="modal-overlay" id="geminiModal" onclick="closeModal(event)">
+    <div class="modal">
+
+      <div class="modal-header">
+        <h2>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+          Менеджер профилей Gemini
+        </h2>
+        <button class="close-btn" onclick="closeModal(event)">×</button>
+      </div>
+
+      <div class="gemini-view-container">
+
+        <!-- СЕКЦИЯ: СПИСОК АККАУНТОВ -->
+        <div id="geminiAccountsSection" class="animated-view">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div style="max-width: 65%;">
+              <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 500;">Управление пулом</h3>
+              <p style="color: var(--text-muted); margin: 0; font-size: 14px; line-height: 1.5;">
+                Переключайтесь между профилями при возникновении ошибки <code>429 Too Many Requests</code>.
+              </p>
+            </div>
+            <button class="btn btn-primary-solid" style="width: auto; padding: 10px 16px; font-size: 14px;" onclick="addGeminiAccount()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Добавить профиль
+            </button>
+          </div>
+
+          <div id="geminiAccountsList" style="max-height: 380px; overflow-y: auto; padding-right: 4px;">
+            <!-- Сюда JS загрузит красивые карточки -->
+          </div>
+        </div>
+
+        <!-- СЕКЦИЯ: РЕДАКТОР ПРОФИЛЯ (Форма) -->
+        <div id="geminiEditorSection" class="animated-view" style="display: none;">
+
+          <div class="guide-banner">
+            <div class="guide-banner-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+            </div>
+            <div class="guide-banner-text">
+              <strong style="color: #fff; font-size: 15px; display: block; margin-bottom: 6px;">Требуется привязка Project ID</strong>
+              1. Перейдите в <a href="https://console.cloud.google.com/welcome" target="_blank" style="color: #60a5fa; text-decoration: none; border-bottom: 1px dashed #60a5fa;">Google Cloud Console</a>.<br>
+              2. В левом верхнем углу скопируйте <b>ID вашего проекта</b> (Project ID).<br>
+              3. Вставьте его в поле ниже.
+            </div>
+          </div>
+
+          <div class="gemini-form-container">
+            <div class="gemini-form-group">
+              <label for="geminiInputName">Название профиля</label>
+              <input type="text" id="geminiInputName" placeholder="Например: Рабочий аккаунт" autocomplete="off" spellcheck="false">
+            </div>
+
+            <div class="gemini-form-group">
+              <label for="geminiInputProjectId">Project ID <span style="color: var(--error)">*</span></label>
+              <input type="text" id="geminiInputProjectId" placeholder="my-project-123" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+            <button class="btn btn-flat" style="width: auto; padding: 10px 20px;" onclick="cancelGeminiEdit()">Назад</button>
+            <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="saveGeminiEdit()">Сохранить изменения</button>
+          </div>
+        </div>
+
+
+
+      </div>
+    </div>
+  </div>
+
 
   <script src="/dashboard.js"></script>
 </body>

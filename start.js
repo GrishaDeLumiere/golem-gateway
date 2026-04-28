@@ -1,3 +1,4 @@
+//start.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -9,6 +10,7 @@ const { getSettings } = require('./settings');
 const AuthInstaller = require('./authInstaller');
 const deepseekProvider = require('./providers/deepseek');
 const qwenProvider = require('./providers/qwen');
+const geminiProvider = require('./providers/gemini')
 
 const app = express();
 app.use(cors());
@@ -18,10 +20,11 @@ app.use(express.json({ limit: '200mb' }));
 const dashboard = new AuthInstaller(PORT);
 dashboard.setup(app);
 
-// 1. Инициализация роутов (только активных)
+// 1. Инициализация роутов
 const settings = getSettings();
 if (settings.providers.deepseek) deepseekProvider.setupRoutes(app, PORT);
 if (settings.providers.qwen) qwenProvider.setupRoutes(app, PORT);
+if (settings.providers.gemini) geminiProvider.setupRoutes(app, PORT);
 
 // 2. УНИВЕРСАЛЬНЫЕ ЭНДПОИНТЫ API
 app.get(['/v1', '/v1/models'], (req, res) => {
@@ -29,6 +32,7 @@ app.get(['/v1', '/v1/models'], (req, res) => {
     let models = [];
     if (currentSettings.providers.deepseek) models.push(...deepseekProvider.MODELS);
     if (currentSettings.providers.qwen) models.push(...qwenProvider.MODELS);
+    if (currentSettings.providers.gemini) models.push(...geminiProvider.MODELS);
     res.json({ object: "list", data: models });
 });
 
@@ -48,6 +52,8 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
             await deepseekProvider.handleChatCompletion(req, res);
         } else if (requestedModel.startsWith('qwen') && currentSettings.providers.qwen) {
             await qwenProvider.handleChatCompletion(req, res);
+        } else if ((requestedModel.startsWith('gemini') || requestedModel.startsWith('gemma')) && currentSettings.providers.gemini) {
+            await geminiProvider.handleChatCompletion(req, res);
         } else {
             res.status(403).json({ error: { message: `Модель ${requestedModel} отключена в настройках или не найдена.` } });
         }
@@ -69,6 +75,7 @@ app.listen(PORT, async () => {
     const initPromises = [];
     if (settings.providers.deepseek) initPromises.push(deepseekProvider.initProvider(PORT));
     if (settings.providers.qwen) initPromises.push(qwenProvider.initProvider(PORT));
+    if (settings.providers.gemini) initPromises.push(geminiProvider.initProvider(PORT));
 
     if (initPromises.length > 0) {
         await Promise.all(initPromises);
@@ -86,3 +93,6 @@ function openInDefaultBrowser(url) {
     else if (platform === 'darwin') exec(`open "${url}"`);
     else exec(`xdg-open "${url}"`);
 }
+
+
+

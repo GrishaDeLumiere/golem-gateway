@@ -11,27 +11,34 @@ class AuthInstaller {
         this.port = port;
     }
 
-    getCardsHtml(providers, settings) {
+getCardsHtml(providers, settings) {
         return providers.map(p => {
             const isDisabledByUser = settings.providers[p.id] === false;
             const isCompletelyDisabled = p.disabled || isDisabledByUser;
             const activeClass = (p.isAuth && !isCompletelyDisabled) ? 'active-card' : (isCompletelyDisabled ? '' : 'error-card');
 
+            let btnText = 'Подключить аккаунт';
+            if (isCompletelyDisabled) {
+                btnText = 'Заблокировано';
+            } else if (p.isAuth) {
+                btnText = p.id === 'gemini' ? 'Управление' : 'Обновить сессию';
+            }
+
             return `
- <div class="card ${isCompletelyDisabled ? 'disabled' : ''} ${activeClass}">
- <div class="card-header">
- <div class="card-icon">${p.logo}</div>
- <h3 class="card-title">${p.name}</h3>
- </div>
- <div class="badge-container" style="--pulse-color: ${p.isAuth && !isCompletelyDisabled ? '16,185,129' : '239,68,68'}">
- <div class="pulse-dot ${p.isAuth && !isCompletelyDisabled ? 'auth' : 'no-auth'}"></div>
- <span class="status-text">${isCompletelyDisabled ? 'Отключено' : (p.isAuth ? 'Доступ разрешен' : 'Ожидает авторизации')}</span>
- </div>
- <button class="btn ${p.isAuth ? 'btn-secondary' : ''}" onclick="openModal('${p.id}')" ${isCompletelyDisabled ? 'disabled' : ''}>
- ${isCompletelyDisabled ? 'Заблокировано' : (p.isAuth ? 'Обновить сессию' : 'Подключить аккаунт')}
- </button>
- </div>
- `;
+            <div class="card ${isCompletelyDisabled ? 'disabled' : ''} ${activeClass}">
+                <div class="card-header">
+                    <div class="card-icon">${p.logo}</div>
+                    <h3 class="card-title">${p.name}</h3>
+                </div>
+                <div class="badge-container" style="--pulse-color: ${p.isAuth && !isCompletelyDisabled ? '16,185,129' : '239,68,68'}">
+                    <div class="pulse-dot ${p.isAuth && !isCompletelyDisabled ? 'auth' : 'no-auth'}"></div>
+                    <span class="status-text">${isCompletelyDisabled ? 'Отключено' : (p.isAuth ? 'Доступ разрешен' : 'Ожидает авторизации')}</span>
+                </div>
+                <button class="btn ${p.isAuth ? 'btn-secondary' : ''}" onclick="openModal('${p.id}')" ${isCompletelyDisabled ? 'disabled' : ''}>
+                    ${btnText}
+                </button>
+            </div>
+            `;
         }).join('');
     }
 
