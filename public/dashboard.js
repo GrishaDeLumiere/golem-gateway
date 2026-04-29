@@ -132,6 +132,7 @@ async function saveSettings() {
         },
         debugMode: document.getElementById('set-debug').checked,
         defaultModel: document.getElementById('set-default-model').value,
+        enableApiKeys: document.getElementById('set-enable-auth').checked,
         masterApiKey: document.getElementById('set-api-key').value.trim(),
         apiKeys: currentApiKeys,
         particles: {

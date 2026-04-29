@@ -1,4 +1,3 @@
-// updater.js
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -15,14 +14,25 @@ const IGNORE_LIST = [
     'deepseek_accounts.json',
     'qwen_accounts.json',
     'node_modules',
-    'temp_update'
+    'temp_update',
+    '.git'
 ];
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function runUpdateStream(res) {
-    const sendLog = (msg) => res.write(`data: ${JSON.stringify({ message: msg })}\n\n`);
+    const sendLog = (msg, type = 'info') => {
+        res.write(`data: ${JSON.stringify({ message: msg, type })}\n\n`);
+    };
 
     try {
-        sendLog('[🔄] Подключение к серверам GitHub...');
+        await sleep(600);
+        sendLog('Соединение с серверами репозитория GitHub...', 'info');
+
+        await sleep(800);
+        sendLog('Запрос на получение архива release/main отправлен.', 'success');
 
         const response = await axios({
             url: REPO_ZIP_URL,
@@ -30,33 +40,45 @@ async function runUpdateStream(res) {
             responseType: 'arraybuffer'
         });
 
-        sendLog('[📥] Архив загружен (' + (response.data.byteLength / 1024 / 1024).toFixed(2) + ' MB)');
+        const mb = (response.data.byteLength / 1024 / 1024).toFixed(2);
+        await sleep(400);
+        sendLog(`Ядро загружено в память (${mb} MB).`, 'success');
 
         if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
         const zipPath = path.join(TEMP_DIR, 'update.zip');
         fs.writeFileSync(zipPath, response.data);
 
-        sendLog('[📦] Распаковка файлов в буферную зону...');
+        await sleep(800);
+        sendLog('Распаковка файлов в буферную директорию...', 'warn');
         const zip = new AdmZip(zipPath);
         zip.extractAllTo(TEMP_DIR, true);
 
+        await sleep(600);
+        sendLog('Распаковка буфера завершена.', 'success');
+
         const newFilesDir = path.join(TEMP_DIR, EXTRACTED_FOLDER_NAME);
 
-        sendLog('[🧹] Синхронизация файлов (удаление старых и запись новых)...');
+        await sleep(800);
+        sendLog('Синхронизация файлов: удаление старых и запись новых блоков...', 'warn');
         syncDirectories(newFilesDir, __dirname);
 
-        sendLog('[🗑️] Зачистка временных файлов...');
+        await sleep(1000);
+        sendLog('Мутация файловой системы ядра прошла успешно.', 'success');
+
+        await sleep(600);
+        sendLog('Очистка временных файлов...', 'info');
         fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 
-        sendLog('[✅] ОБНОВЛЕНИЕ ЗАВЕРШЕНО!');
-        sendLog('[⚠️] Процесс шлюза будет остановлен. Пожалуйста, запустите его заново.');
+        await sleep(400);
+        sendLog('ОБНОВЛЕНИЕ СИСТЕМЫ ЗАВЕРШЕНО!', 'success');
+        sendLog('Процесс шлюза будет принудительно остановлен через 3 сек. для применения изменений.', 'error');
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
 
         setTimeout(() => {
             process.exit(0);
-        }, 2000);
+        }, 3000);
 
     } catch (err) {
         res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
