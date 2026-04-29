@@ -6,7 +6,6 @@ const DEFAULT_SETTINGS = {
     providers: {
         deepseek: true,
         qwen: true,
-        chatgpt: false,
         gemini: false
     },
     debugMode: true,

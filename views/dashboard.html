@@ -68,14 +68,15 @@
 
       <span style="opacity: 0.2; margin: 0 8px;">|</span>
 
-      <a href="https://github.com/GrishaDeLumiere/golem-gateway" target="_blank" class="footer-link" title="Проверить обновления на GitHub">
+      <a href="#" class="footer-link" title="Проверить обновления" onclick="checkUpdate(); return false;">
         <span class="footer-avatar">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
           </svg>
         </span>
-        <span class="footer-name" style="color: var(--success); font-weight: 600;">v0.1.1</span>
+        <span id="versionText" class="footer-name" style="color: var(--success); font-weight: 600;">v0.1.2</span>
       </a>
+
     </div>
   </div>
 
@@ -181,17 +182,6 @@
                   <p style="font-size: 12px;">Gemini Code Assist and Gemini CLI.</p>
                 </div>
                 <label class="switch"><input type="checkbox" id="set-gemini"><span class="slider"></span></label>
-              </div>
-
-              <div class="setting-item" style="opacity: 0.6;">
-                <div class="setting-icon">
-                  <img src="/chatgpt.svg" width="24" height="24" alt="ChatGPT">
-                </div>
-                <div class="setting-info">
-                  <h4>Адаптер ChatGPT</h4>
-                  <p>Экспериментальный модуль. Находится в разработке.</p>
-                </div>
-                <label class="switch"><input type="checkbox" id="set-chatgpt" disabled><span class="slider"></span></label>
               </div>
 
             </div>
@@ -364,6 +354,32 @@
     </div>
   </div>
 
+  <!-- Модальное окно Обновления -->
+  <div class="modal-overlay" id="updateModal" onclick="closeModal(event)">
+    <div class="modal" style="text-align: center;">
+      <div class="modal-header" style="justify-content: center; border-bottom: none;">
+        <h2 style="font-size: 24px; display: flex; flex-direction: column; align-items: center; gap: 16px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Обновление системы
+        </h2>
+      </div>
+
+      <p id="updateMessage" style="color: var(--text-muted); font-size: 16px; margin-bottom: 24px;">
+        Проверка обновлений...
+      </p>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button class="btn btn-secondary" style="width: auto;" onclick="closeModal()">Отмена</button>
+        <button class="btn" id="startUpdateBtn" style="width: auto; display: none;" onclick="startUpdate()">
+          Установить обновление
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="/dashboard.js"></script>
 </body>

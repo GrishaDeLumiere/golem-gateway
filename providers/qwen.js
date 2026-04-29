@@ -164,13 +164,20 @@ async function initProvider(port = PORT) {
 }
 
 function setupRoutes(app, port) {
-    app.post('/receive-qwen-payload', async (req, res) => {
-        const { token, cookies } = req.body;
+    app.get('/receive-qwen-payload', async (req, res) => {
+        const { token, cookies } = req.query;
         if (cookies && token) {
             updateEnv('QWEN_TOKEN', token.replace(/(^"|"$)/g, ''));
             updateEnv('QWEN_COOKIES', cookies);
             console.log('\n[+] Qwen: ПЕЙЛОАД ПЕРЕХВАЧЕН! Данные сохранены.');
-            res.send('OK');
+
+            // Читаем и отдаем красивый HTML
+            let html = fs.readFileSync(path.join(__dirname, '../views/success.html'), 'utf8');
+            html = html.replace('{{TITLE}}', 'Сессия Qwen захвачена!')
+                .replace('{{MESSAGE}}', 'Модуль авторизован и готов к генерации.')
+                .replace(/{{COLOR}}/g, '#8b5cf6');
+            res.send(html);
+
             if (browser) await browser.close().catch(() => { }).finally(() => browser = null);
             await initProvider(currentPort);
         } else {

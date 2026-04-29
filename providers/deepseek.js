@@ -137,17 +137,24 @@ async function initProvider(port = PORT) {
 }
 
 function setupRoutes(app, port) {
-    app.post('/receive-payload', async (req, res) => {
-        const { token, cookies } = req.body;
+    app.get('/receive-payload', async (req, res) => {
+        const { token, cookies } = req.query;
         if (token && cookies) {
             updateEnv('SESSION_TOKEN', token.replace(/(^"|"$)/g, ''));
             updateEnv('COOKIES', cookies);
             console.log('\n[+] DeepSeek: ПЕЙЛОАД ПЕРЕХВАЧЕН! Токен сохранен.');
-            res.send('OK');
+
+            // Читаем и отдаем красивый HTML
+            let html = fs.readFileSync(path.join(__dirname, '../views/success.html'), 'utf8');
+            html = html.replace('{{TITLE}}', 'Сессия DeepSeek перехвачена!')
+                .replace('{{MESSAGE}}', 'Алгоритмы ИИ успешно подключены к ядру.')
+                .replace(/{{COLOR}}/g, '#3b82f6');
+            res.send(html);
+
             if (browser) await browser.close().catch(() => { }).finally(() => browser = null);
             await initProvider(currentPort);
         } else {
-            res.status(400).send('Ошибка данных');
+            res.status(400).send('Ошибка данных. Не удалось извлечь куки.');
         }
     });
 }

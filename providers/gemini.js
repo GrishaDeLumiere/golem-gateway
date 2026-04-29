@@ -189,11 +189,9 @@ async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming) {
         if (isDebug) {
             console.error(`[❌ Gemini] Google API Error ${response.status}: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
         } else {
-            // Короткий и понятный лог, если отладка выключена (чтобы не спамить консоль)
             const shortMsg = errObj?.error?.message || "Неизвестная ошибка провайдера";
             const statusName = errObj?.error?.status || "ERROR";
 
-            // Если это 429 (лимиты), пишем аккуратно
             if (response.status === 429) {
                 console.error(`[⚠️ Gemini] Ошибка 429: Превышен лимит запросов (Capacity Exhausted)`);
             } else {
@@ -238,38 +236,6 @@ function setupRoutes(app, PORT) {
         res.json({ success: true, db: readDb() });
     });
 
-    app.use((req, res, next) => {
-        let requestModel = "";
-        if (req.body && req.body.model) {
-            requestModel = req.body.model.replace("models/", "");
-        }
-
-        res.on('finish', () => {
-            if (!req.originalUrl.includes('/models') && !req.originalUrl.includes('/chat/completions')) return;
-
-            const ip = req.socket.remoteAddress?.replace('::ffff:', '') || '127.0.0.1';
-            const port = req.socket.remotePort || '00000';
-
-            let statusMessage = res.statusMessage || '';
-            if (res.statusCode === 200) statusMessage = 'OK';
-            else if (res.statusCode === 429) statusMessage = 'Too Many Requests';
-            else if (res.statusCode === 400) statusMessage = 'Bad Request';
-            else if (res.statusCode === 500) statusMessage = 'Internal Server Error';
-
-            let logUrl = req.originalUrl;
-
-            if (req.originalUrl.includes('/chat/completions') && requestModel) {
-                const isStream = req.body?.stream ? 'streamGenerateContent' : 'generateContent';
-                logUrl = `/v1beta/models/${requestModel}%3A${isStream}`;
-            }
-
-            if (getSettings().debugMode) {
-                console.log(`INFO:     ${ip}:${port} - "${req.method} ${logUrl} HTTP/${req.httpVersion || '1.1'}" ${res.statusCode} ${statusMessage}`);
-            }
-        });
-        next();
-    });
-
     app.get('/api/gemini/auth', (req, res) => {
         if (!oauth2Client) initProvider(PORT);
         res.redirect(oauth2Client.generateAuthUrl({ access_type: 'offline', scope: AUTH_SCOPES, prompt: 'consent' }));
@@ -282,8 +248,16 @@ function setupRoutes(app, PORT) {
             const { tokens } = await oauth2Client.getToken(code);
             let projectId = await ensureProjectAndOnboard(tokens.access_token).catch(() => "");
             saveNewAccount(tokens, projectId);
-            res.send(`✅ Аккаунт добавлен! Окно можно закрыть. <script>setTimeout(() => window.close(), 2000);</script>`);
-        } catch (e) { res.status(500).send(`Ошибка получения токена: ${e.message}`); }
+
+            let html = fs.readFileSync(path.join(__dirname, '../views/success.html'), 'utf8');
+            html = html.replace('{{TITLE}}', 'Профиль Google добавлен!')
+                .replace('{{MESSAGE}}', 'Доступ к API Gemini успешно разрешен.')
+                .replace(/{{COLOR}}/g, '#10b981');
+            res.send(html);
+
+        } catch (e) {
+            res.status(500).send(`Ошибка получения токена: ${e.message}`);
+        }
     });
 
     app.get('/v1beta/models', (req, res) => res.json({ models: NATIVE_MODELS }));
@@ -313,12 +287,10 @@ function setupRoutes(app, PORT) {
             const isPro = rawModelName.includes("-pro") || rawModelName.includes("pro");
             const isFlash = rawModelName.includes("-flash") || rawModelName.includes("flash");
 
-            // МАКСИМАЛЬНЫЙ БЮДЖЕТ: СТРОГО ДО 32768 ТОКЕНОВ (Лимит Google API)
             let thinkingBudget = isFlash ? 24576 : 32768;
 
-            // Снижаем если прямо запрошен nothinking
             if (rawModelName.includes("-nothinking")) {
-                thinkingBudget = 128; // Безопасный минимум, не 0
+                thinkingBudget = 128;
             }
 
             if (!apiModelName.includes("image")) {
@@ -433,7 +405,6 @@ function openaiRequestToGemini(openaiReq) {
     const isFlash = modelName.includes("-flash") || modelName.includes("flash");
     const isNothinking = modelName.includes("-nothinking");
 
-    // МАКСИМАЛЬНЫЙ БЮДЖЕТ: СТРОГО ДО 32768 ТОКЕНОВ (Лимит Google API)
     let thinkingBudget = isFlash ? 24576 : 32768;
     let includeThoughts = true;
 
@@ -445,7 +416,7 @@ function openaiRequestToGemini(openaiReq) {
             case "minimal": thinkingBudget = 128; break;
             case "low": thinkingBudget = 1024; break;
             case "medium": thinkingBudget = 4096; break;
-            case "high": /* Оставляем максимальный 32768 */ break;
+            case "high": break;
         }
     }
 
