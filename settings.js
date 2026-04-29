@@ -10,7 +10,8 @@ const DEFAULT_SETTINGS = {
         gemini: false
     },
     debugMode: true,
-    defaultModel: "deepseek-v4-flash"
+    defaultModel: "deepseek-v4-flash",
+    masterApiKey: ""
 };
 
 function getSettings() {

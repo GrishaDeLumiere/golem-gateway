@@ -1018,3 +1018,52 @@
  .gemini-form-group input::placeholder {
      color: rgba(255, 255, 255, 0.2);
  }
+
+.modern-select {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 10px;
+    outline: none;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 180px;
+    flex-shrink: 0;
+    margin-left: 16px;
+}
+
+.modern-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(97, 92, 237, 0.15);
+}
+
+.modern-select option {
+    background: #18181b;
+    color: var(--text);
+}
+
+.modern-input {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text);
+    padding: 12px 40px 12px 16px;
+    border-radius: 10px;
+    outline: none;
+    font-family: monospace;
+    font-size: 14px;
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+.modern-input:focus {
+    border-color: var(--error);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.modern-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+    font-family: -apple-system, sans-serif;
+}

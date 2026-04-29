@@ -16,6 +16,30 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '200mb' }));
 
+// --- ЗАЩИТА API (MASTER API KEY) ---
+app.use(['/v1', '/chat/completions', '/models'], (req, res, next) => {
+    // Пропускаем CORS-preflight запросы
+    if (req.method === 'OPTIONS') return next();
+
+    const currentSettings = getSettings();
+    const apiKey = currentSettings.masterApiKey;
+
+    // Если пароль в настройках задан (не пустой)
+    if (apiKey && apiKey.trim() !== "") {
+        const authHeader = req.headers.authorization || "";
+        if (authHeader !== `Bearer ${apiKey.trim()}`) {
+            if (currentSettings.debugMode) {
+                console.log(`[🔒 ЗАЩИТА] Заблокирован запрос без правильного API-ключа (IP: ${req.ip})`);
+            }
+            return res.status(401).json({
+                error: { message: "Invalid API Key. Укажите правильный ключ в настройках клиента (IDE)." }
+            });
+        }
+    }
+    next();
+});
+// -----------------------------------
+
 // 0. Инициализация Дашборда
 const dashboard = new AuthInstaller(PORT);
 dashboard.setup(app);

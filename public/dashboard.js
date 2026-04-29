@@ -1,6 +1,7 @@
 //public/dashboard.js
 
-function openModal(id) {
+// 1. Основная логика обычных провайдеров (переименовали, чтобы не было путаницы)
+function baseOpenModal(id) {
     const data = window.__PROVIDERS__[id];
     if (!data) return;
 
@@ -15,7 +16,7 @@ function openModal(id) {
     const actionBtn = document.getElementById('modalActionBtn');
 
     if (data.isOAuth) {
-        // OAuth (например Google / Gemini)
+        // OAuth (например Google)
         stepsDivs.forEach(div => div.style.display = 'none');
         codeBox.style.display = 'none';
 
@@ -24,7 +25,7 @@ function openModal(id) {
             window.location.href = data.payload;
         };
     } else {
-        // Обычные провайдеры
+        // Обычные провайдеры (копирование скрипта)
         stepsDivs.forEach(div => div.style.display = 'flex');
         codeBox.style.display = 'flex';
 
@@ -44,6 +45,15 @@ function openModal(id) {
     }
 
     document.getElementById('authModal').classList.add('active');
+}
+
+// 2. ГЛАВНАЯ ФУНКЦИЯ-РАСПРЕДЕЛИТЕЛЬ
+function openModal(id) {
+    if (id === 'gemini') {
+        openGeminiManager();
+    } else {
+        baseOpenModal(id);
+    }
 }
 
 function closeModal(e) {
@@ -72,6 +82,8 @@ async function openSettingsModal() {
         document.getElementById('set-chatgpt').checked = settings.providers.chatgpt;
         document.getElementById('set-debug').checked = settings.debugMode;
         document.getElementById('set-gemini').checked = settings.providers.gemini
+        document.getElementById('set-default-model').value = settings.defaultModel || 'deepseek-v4-flash';
+        document.getElementById('set-api-key').value = settings.masterApiKey || '';
 
         document.getElementById('settingsModal').classList.add('active');
     } catch (err) {
@@ -92,7 +104,9 @@ async function saveSettings() {
             chatgpt: document.getElementById('set-chatgpt').checked,
             gemini: document.getElementById('set-gemini').checked
         },
-        debugMode: document.getElementById('set-debug').checked
+        debugMode: document.getElementById('set-debug').checked,
+        defaultModel: document.getElementById('set-default-model').value,
+        masterApiKey: document.getElementById('set-api-key').value.trim()
     };
 
     try {
@@ -238,8 +252,12 @@ function renderGeminiAccounts() {
 }
 
 function addGeminiAccount() {
-    window.open('/api/gemini/auth', '_blank', 'width=600,height=700');
-    setTimeout(fetchGeminiAccounts, 5000);
+    window.open('/api/gemini/auth', 'geminiAuthPopup', 'width=600,height=700');
+    const onWindowFocus = () => {
+        fetchGeminiAccounts();
+        window.removeEventListener('focus', onWindowFocus);
+    };
+    window.addEventListener('focus', onWindowFocus);
 }
 
 async function saveGeminiDb() {
@@ -251,9 +269,14 @@ async function saveGeminiDb() {
     renderGeminiAccounts();
 }
 
-function setActiveGemini(index) {
+async function setActiveGemini(index) {
     currentGeminiDb.active = index;
-    saveGeminiDb();
+    await saveGeminiDb();
+
+    const toast = document.getElementById('toast');
+    toast.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Профиль изменен';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
 function deleteGeminiAccount(index) {
@@ -317,4 +340,15 @@ function saveGeminiEdit() {
     toast.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Настройки профиля сохранены';
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function togglePasswordVisibility(inputId, btnEl) {
+    const input = document.getElementById(inputId);
+    if (input.type === "password") {
+        input.type = "text";
+        btnEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+    } else {
+        input.type = "password";
+        btnEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+    }
 }

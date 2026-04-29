@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { getSettings } = require('../settings');
 const { OAuth2Client } = require('google-auth-library');
 
 const CLIENT_ID = process.env.GEMINI_CLIENT_ID || "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
@@ -182,7 +183,24 @@ async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming) {
         let errText = await response.text();
         let errObj = null;
         try { errObj = JSON.parse(errText); } catch (e) { }
-        console.error(`ERROR:root:Google API returned status ${response.status}: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
+
+        const isDebug = getSettings().debugMode;
+
+        if (isDebug) {
+            console.error(`[❌ Gemini] Google API Error ${response.status}: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
+        } else {
+            // Короткий и понятный лог, если отладка выключена (чтобы не спамить консоль)
+            const shortMsg = errObj?.error?.message || "Неизвестная ошибка провайдера";
+            const statusName = errObj?.error?.status || "ERROR";
+
+            // Если это 429 (лимиты), пишем аккуратно
+            if (response.status === 429) {
+                console.error(`[⚠️ Gemini] Ошибка 429: Превышен лимит запросов (Capacity Exhausted)`);
+            } else {
+                console.error(`[❌ Gemini] Ошибка ${response.status} (${statusName}): ${shortMsg}`);
+            }
+        }
+
         throw new Error(JSON.stringify({ status: response.status, body: errObj || errText }));
     }
     return response;
@@ -199,7 +217,9 @@ function handleError(e, res) {
     } catch (err) { }
 
     if (!e.message.includes('status=')) {
-        console.error(`ERROR:root:Unexpected Provider Error: ${e.message}`);
+        if (getSettings().debugMode) {
+            console.error(`[❌ Gemini] Unexpected Provider Error: ${e.message}`);
+        }
     }
     if (!res.headersSent) {
         res.status(500).json({ error: { message: e.message } });
@@ -240,10 +260,12 @@ function setupRoutes(app, PORT) {
 
             if (req.originalUrl.includes('/chat/completions') && requestModel) {
                 const isStream = req.body?.stream ? 'streamGenerateContent' : 'generateContent';
-                logUrl = `/v1beta/models/${requestModel}%3A${isStream}?key=123456&alt=sse`;
+                logUrl = `/v1beta/models/${requestModel}%3A${isStream}`;
             }
 
-            console.log(`INFO:     ${ip}:${port} - "${req.method} ${logUrl} HTTP/${req.httpVersion || '1.1'}" ${res.statusCode} ${statusMessage}`);
+            if (getSettings().debugMode) {
+                console.log(`INFO:     ${ip}:${port} - "${req.method} ${logUrl} HTTP/${req.httpVersion || '1.1'}" ${res.statusCode} ${statusMessage}`);
+            }
         });
         next();
     });
@@ -291,7 +313,7 @@ function setupRoutes(app, PORT) {
             const isPro = rawModelName.includes("-pro") || rawModelName.includes("pro");
             const isFlash = rawModelName.includes("-flash") || rawModelName.includes("flash");
 
-            // 🔥 МАКСИМАЛЬНЫЙ БЮДЖЕТ: СТРОГО ДО 32768 ТОКЕНОВ (Лимит Google API)
+            // МАКСИМАЛЬНЫЙ БЮДЖЕТ: СТРОГО ДО 32768 ТОКЕНОВ (Лимит Google API)
             let thinkingBudget = isFlash ? 24576 : 32768;
 
             // Снижаем если прямо запрошен nothinking
