@@ -379,5 +379,5 @@ async function checkUpdateModal() {
 
 function openUpdaterWindow() {
     closeModal();
-    window.open('/updater', '_blank');
+    window.location.href = '/updater';
 }
