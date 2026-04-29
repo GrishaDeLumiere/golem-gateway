@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Core | Установка обновления</title>
+    <link rel="icon" href="/favicon.svg" type="image/x-icon">
+    <style>
+        body {
+            margin: 0; background-color: #09090b; color: #10b981;
+            font-family: 'Courier New', Courier, monospace; display: flex;
+            align-items: center; justify-content: center; height: 100vh; overflow: hidden;
+        }
+        .terminal {
+            width: 600px; background: #18181b; border: 1px solid #27272a;
+            border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); padding: 20px;
+        }
+        .header {
+            display: flex; justify-content: space-between; border-bottom: 1px dashed #3f3f46;
+            padding-bottom: 10px; margin-bottom: 20px; color: #a1a1aa;
+        }
+        .logs { height: 250px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
+        .log-line { margin: 0; animation: fadeIn 0.3s ease-in; }
+        .error { color: #ef4444; }
+        .spinner { display: inline-block; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="terminal">
+        <div class="header">
+            <span>> SYS.UPDATER_MODULE</span>
+            <span id="statusText">В процессе <span class="spinner">⚙️</span></span>
+        </div>
+        <div class="logs" id="logs">
+            <p class="log-line">> Инициализация протокола обновления...</p>
+        </div>
+    </div>
+
+    <script>
+        const logsEl = document.getElementById('logs');
+        const statusEl = document.getElementById('statusText');
+
+        function appendLog(text, isError = false) {
+            const p = document.createElement('p');
+            p.className = 'log-line' + (isError ? ' error' : '');
+            p.innerText = '> ' + text;
+            logsEl.appendChild(p);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        // Подключаемся к стриму обновления на сервере
+        const evtSource = new EventSource("/api/update-stream");
+
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.message) {
+                appendLog(data.message);
+            } 
+            else if (data.error) {
+                appendLog("КРИТИЧЕСКАЯ ОШИБКА: " + data.error, true);
+                statusEl.innerHTML = '<span style="color:#ef4444">ОШИБКА</span>';
+                evtSource.close();
+            }
+            else if (data.done) {
+                statusEl.innerHTML = '<span style="color:#10b981">ЗАВЕРШЕНО</span>';
+                evtSource.close();
+                appendLog("Окно закроется автоматически через 3 секунды...");
+                
+                // Автозакрытие окна
+                setTimeout(() => {
+                    window.close();
+                    // Резервный метод, если браузер блокирует window.close()
+                    document.body.innerHTML = '<h2 style="text-align:center; margin-top:20vh; color:#10b981;">ОБНОВЛЕНИЕ ЗАВЕРШЕНО<br>Можете закрыть эту вкладку.</h2>';
+                }, 3000);
+            }
+        };
+
+        evtSource.onerror = function() {
+            evtSource.close();
+        };
+    </script>
+</body>
+</html>

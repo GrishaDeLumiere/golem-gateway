@@ -5,79 +5,76 @@ const axios = require('axios');
 const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
 
-// Ссылка на скачивание архива ветки main
 const REPO_ZIP_URL = 'https://github.com/GrishaDeLumiere/golem-gateway/archive/refs/heads/main.zip';
 const TEMP_DIR = path.join(__dirname, 'temp_update');
 const EXTRACTED_FOLDER_NAME = 'golem-gateway-main';
 
-// Файлы и папки, которые НЕЛЬЗЯ удалять или заменять
 const IGNORE_LIST = [
     '.env',
     'settings.json',
     'gemini_credentials.json',
-    'node_modules',
-    'updater.js',
-    'package-lock.json'
+    'node_modules'
 ];
 
-async function runUpdate() {
-    console.log('[🔄 АПДЕЙТЕР] Ждем 5 секунд, чтобы сервер успел закрыться...');
-    await new Promise(res => setTimeout(res, 5000));
+async function runUpdateStream(res) {
+    const sendLog = (msg) => res.write(`data: ${JSON.stringify({ message: msg })}\n\n`);
 
     try {
-        console.log('[🔄 АПДЕЙТЕР] Скачивание обновления с GitHub...');
+        sendLog('[🔄] Подключение к серверам GitHub...');
+        
         const response = await axios({
             url: REPO_ZIP_URL,
             method: 'GET',
             responseType: 'arraybuffer'
         });
 
+        sendLog('[📥] Архив обновления успешно загружен (' + (response.data.byteLength / 1024 / 1024).toFixed(2) + ' MB)');
+
         if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
         const zipPath = path.join(TEMP_DIR, 'update.zip');
         fs.writeFileSync(zipPath, response.data);
 
-        console.log('[🔄 АПДЕЙТЕР] Распаковка архива...');
+        sendLog('[📦] Распаковка файлов в буферную зону...');
         const zip = new AdmZip(zipPath);
         zip.extractAllTo(TEMP_DIR, true);
 
         const newFilesDir = path.join(TEMP_DIR, EXTRACTED_FOLDER_NAME);
 
-        console.log('[🔄 АПДЕЙТЕР] Замена файлов...');
+        sendLog('[⚙️] Перезапись файлов ядра...');
         copyFolderRecursiveSync(newFilesDir, __dirname);
 
-        console.log('[🔄 АПДЕЙТЕР] Удаление временных файлов...');
+        sendLog('[🧹] Зачистка временных файлов...');
         fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 
-        console.log('[🔄 АПДЕЙТЕР] Установка новых зависимостей (если есть)...');
-        // Запускаем npm install на случай, если в package.json появились новые модули
-        await runCommand('npm', ['install']);
-
-        console.log('[✅ АПДЕЙТЕР] Обновление завершено! Запускаем ядро...');
+        sendLog('[✅] ОБНОВЛЕНИЕ ЗАВЕРШЕНО! Поднимаем новое окно...');
         
-        // Запускаем start.js в новом независимом окне/процессе
-        const startCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const child = spawn(startCommand, ['start'], {
-            detached: true,
-            stdio: 'ignore'
-        });
-        child.unref();
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
 
-        process.exit(0);
+        setTimeout(() => {
+            if (process.platform === 'win32') {
+                spawn('cmd.exe', ['/c', 'start', '""', 'start.bat'], {
+                    detached: true,
+                    stdio: 'ignore'
+                }).unref();
+            } else {
+                spawn('npm', ['start'], { detached: true, stdio: 'ignore' }).unref();
+            }
+            process.exit(0);
+        }, 2000);
+
     } catch (err) {
-        console.error('[❌ АПДЕЙТЕР] Ошибка при обновлении:', err);
-        // В случае ошибки пытаемся поднять старый сервер
-        spawn('node', ['start.js'], { detached: true, stdio: 'ignore' }).unref();
-        process.exit(1);
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
     }
 }
 
-// Вспомогательная функция для копирования с заменой (и игнором)
 function copyFolderRecursiveSync(source, target) {
     if (!fs.existsSync(target)) fs.mkdirSync(target);
 
     const files = fs.readdirSync(source);
     files.forEach(file => {
-        if (IGNORE_LIST.includes(file)) return; // Пропускаем важные файлы
+        if (IGNORE_LIST.includes(file)) return; 
 
         const currentSource = path.join(source, file);
         const currentTarget = path.join(target, file);
@@ -90,12 +87,4 @@ function copyFolderRecursiveSync(source, target) {
     });
 }
 
-function runCommand(command, args) {
-    return new Promise((resolve) => {
-        const cmd = process.platform === 'win32' && command === 'npm' ? 'npm.cmd' : command;
-        const processExec = spawn(cmd, args, { stdio: 'inherit' });
-        processExec.on('close', resolve);
-    });
-}
-
-runUpdate();
+module.exports = { runUpdateStream };

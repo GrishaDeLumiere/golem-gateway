@@ -8,6 +8,7 @@ const qwenProvider = require('./providers/qwen');
 const geminiProvider = require('./providers/gemini');
 const axios = require('axios');
 const { spawn } = require('child_process');
+const { runUpdateStream } = require('./updater');
 
 class AuthInstaller {
     constructor(port) {
@@ -118,13 +119,11 @@ class AuthInstaller {
         });
 
 
-        // Текущая версия (лучше брать из package.json локально)
         const CURRENT_VERSION = require(path.join(__dirname, 'package.json')).version;
 
-        // Проверка наличия обновлений
+        // 1. Проверка наличия обновлений на GitHub
         app.get('/api/check-update', async (req, res) => {
             try {
-                // Читаем raw package.json из ветки main
                 const response = await axios.get('https://raw.githubusercontent.com/GrishaDeLumiere/golem-gateway/main/package.json');
                 const latestVersion = response.data.version;
 
@@ -134,28 +133,24 @@ class AuthInstaller {
                     latestVersion: latestVersion
                 });
             } catch (err) {
+                console.error('[Апдейтер] Ошибка проверки версии:', err.message);
                 res.status(500).json({ error: 'Не удалось проверить обновления' });
             }
         });
 
-        // Запуск обновления
-        app.post('/api/start-update', (req, res) => {
-            console.log('\n[⚠️ СИСТЕМА] Получен сигнал на обновление ядра!');
-            console.log('[⚠️ СИСТЕМА] Передаю управление модулю updater.js...');
+        // 2. Отдача красивой HTML-страницы апдейтера
+        app.get('/updater', (req, res) => {
+            res.type('text/html').sendFile(path.join(viewsPath, 'updater.html'));
+        });
 
-            res.json({ success: true, message: "Сервер уходит на обновление..." });
+        // 3. Стрим для логов обновления (SSE) и запуск процесса
+        app.get('/api/update-stream', (req, res) => {
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
 
-            // Запускаем updater.js как независимый процесс
-            const child = spawn('node', ['updater.js'], {
-                detached: true,
-                stdio: 'inherit' // Чтобы видеть логи апдейтера в той же консоли
-            });
-            child.unref();
-
-            // Убиваем текущий процесс Node.js
-            setTimeout(() => {
-                process.exit(0);
-            }, 1000);
+            // Запускаем переписанный апдейтер
+            runUpdateStream(res);
         });
 
     }
