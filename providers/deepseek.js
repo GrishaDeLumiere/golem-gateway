@@ -1,5 +1,3 @@
-// providers/deepseek.js
-
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const EventEmitter = require('events');
@@ -32,6 +30,34 @@ const MODELS = [
     { id: "deepseek-v4-pro-search-think", object: "model", owned_by: "deepseek-system" }
 ];
 
+const DB_FILE = path.join(__dirname, '../deepseek_accounts.json');
+
+function getDb() {
+    if (fs.existsSync(DB_FILE)) {
+        try {
+            return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        } catch (e) { }
+    }
+    // Миграция старых данных из .env
+    const db = { active: 0, accounts: [] };
+    if (process.env.SESSION_TOKEN && process.env.COOKIES) {
+        db.accounts.push({
+            name: "Основной профиль (.env)",
+            token: process.env.SESSION_TOKEN.replace(/(^"|"$)/g, ''),
+            cookies: process.env.COOKIES
+        });
+    }
+    return db;
+}
+
+function saveDb(db) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+function renewAuth() {
+    console.log('\n[!] DeepSeek: ВНИМАНИЕ: База профилей пуста или сессия мертва. Добавьте аккаунт.');
+}
+
 function openInDefaultBrowser(url) {
     const platform = process.platform;
     if (platform === 'win32') exec(`start "" "${url}"`);
@@ -39,119 +65,171 @@ function openInDefaultBrowser(url) {
     else exec(`xdg-open "${url}"`);
 }
 
-function updateEnv(key, value) {
-    const envPath = path.resolve(__dirname, '../.env');
-    if (!fs.existsSync(envPath)) fs.writeFileSync(envPath, '');
-    let envContent = fs.readFileSync(envPath, 'utf-8');
-    const target = new RegExp(`^${key}=.*`, 'm');
-    if (target.test(envContent)) envContent = envContent.replace(target, `${key}=${value}`);
-    else envContent += `\n${key}=${value}`;
-    fs.writeFileSync(envPath, envContent.trim());
-    process.env[key] = value;
-}
+let initQueue = Promise.resolve();
 
-function renewAuth() {
-    console.log('\n[!] DeepSeek: ВНИМАНИЕ: Токен мертв или отсутствует.');
+async function initProviderCore(port = PORT) {
+    currentPort = port;
+    isInitializing = true;
+    if (browser) {
+        await browser.close().catch(() => { });
+        browser = null;
+        page = null;
+    }
+
+    const db = typeof getDb === 'function' ? getDb() : null;
+    if (!db.accounts || db.accounts.length === 0) {
+        renewAuth();
+        isInitializing = false;
+        return;
+    }
+
+    const activeAcc = db.accounts[db.active] || db.accounts[0];
+    const accToken = activeAcc.token;
+    const accCookies = activeAcc.cookies;
+
+    if (!accToken || !accCookies) {
+        renewAuth();
+        isInitializing = false;
+        return;
+    }
+
+    try {
+        console.log('\n[*] DeepSeek: Создаем голема в тенях...');
+        browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1280,800']
+        });
+
+        page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+        await page.exposeFunction('emitChunkToNode', (text) => networkStreamEvents.emit('chunk', text));
+        await page.exposeFunction('emitEndToNode', () => networkStreamEvents.emit('end'));
+
+        await page.evaluateOnNewDocument(() => {
+            const originalOpen = XMLHttpRequest.prototype.open;
+            const originalSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.open = function (method, url) {
+                this._isVampTarget = (typeof url === 'string' && url.includes('completion'));
+                return originalOpen.apply(this, arguments);
+            };
+            XMLHttpRequest.prototype.send = function () {
+                if (this._isVampTarget) {
+                    let lastLength = 0;
+                    this.addEventListener('readystatechange', function () {
+                        try {
+                            if (this.readyState === 3 || this.readyState === 4) {
+                                const text = this.responseText || (typeof this.response === 'string' ? this.response : '');
+                                if (text) {
+                                    const newDelta = text.substring(lastLength);
+                                    lastLength = text.length;
+                                    if (newDelta && window.emitChunkToNode) window.emitChunkToNode(newDelta);
+                                }
+                            }
+                        } catch (e) { }
+                        if (this.readyState === 4 && window.emitEndToNode) window.emitEndToNode();
+                    });
+                }
+                return originalSend.apply(this, arguments);
+            };
+        });
+
+        const cookiesRaw = accCookies || '';
+        if (cookiesRaw) {
+            const cookies = cookiesRaw.split(';').map(pair => {
+                const index = pair.indexOf('=');
+                if (index === -1) return null;
+                return { name: pair.substring(0, index).trim(), value: pair.substring(index + 1).trim(), domain: '.deepseek.com', path: '/' };
+            }).filter(c => c !== null);
+            await page.setCookie(...cookies);
+        }
+
+        if (accToken) {
+            await page.evaluateOnNewDocument((tokenText) => {
+                let t = tokenText.replace(/^['"]|['"]$/g, '');
+                try { let parsed = JSON.parse(t); if (parsed.value) t = parsed.value; } catch (e) { }
+                localStorage.setItem('userToken', JSON.stringify({ value: t, __version: "0" }));
+            }, accToken);
+        }
+
+        console.log(`[*] DeepSeek: Открываем основную сцену...`);
+        await page.goto('https://chat.deepseek.com', { waitUntil: 'networkidle2' });
+
+        if (page.url().includes('sign_in')) {
+            console.error('[!] DeepSeek: Сессия протухла. Начинаю сброс...');
+            await browser.close().catch(() => { });
+            browser = null;
+            renewAuth();
+            isInitializing = false;
+            return;
+        }
+
+        isInitializing = false;
+        console.log('[+] DeepSeek: Голем на позиции. Алгоритм активен.');
+    } catch (err) {
+        if (err.message.includes('TargetCloseError') || err.message.includes('Session closed') || err.message.includes('Target closed')) {
+            console.log('[-] Настройка старого профиля прервана (выполняется смена контекста).');
+        } else {
+            console.error('\n[-] Ошибка инициализации:', err.message);
+        }
+        isInitializing = false;
+    }
 }
 
 async function initProvider(port = PORT) {
-    currentPort = port;
-    isInitializing = true;
-
-    if (!process.env.SESSION_TOKEN || !process.env.COOKIES) {
-        renewAuth();
-        return;
-    }
-
-    console.log('\n[*] DeepSeek: Создаем голема в тенях...');
-    browser = await puppeteer.launch({
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1280,800']
+    initQueue = initQueue.then(() => initProviderCore(port)).catch(err => {
+        console.error('Ошибка очереди DeepSeek:', err.message);
     });
-
-    page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-    await page.exposeFunction('emitChunkToNode', (text) => networkStreamEvents.emit('chunk', text));
-    await page.exposeFunction('emitEndToNode', () => networkStreamEvents.emit('end'));
-
-    await page.evaluateOnNewDocument(() => {
-        const originalOpen = XMLHttpRequest.prototype.open;
-        const originalSend = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.open = function (method, url) {
-            this._isVampTarget = (typeof url === 'string' && url.includes('completion'));
-            return originalOpen.apply(this, arguments);
-        };
-        XMLHttpRequest.prototype.send = function () {
-            if (this._isVampTarget) {
-                let lastLength = 0;
-                this.addEventListener('readystatechange', function () {
-                    try {
-                        if (this.readyState === 3 || this.readyState === 4) {
-                            const text = this.responseText || (typeof this.response === 'string' ? this.response : '');
-                            if (text) {
-                                const newDelta = text.substring(lastLength);
-                                lastLength = text.length;
-                                if (newDelta && window.emitChunkToNode) window.emitChunkToNode(newDelta);
-                            }
-                        }
-                    } catch (e) { }
-                    if (this.readyState === 4 && window.emitEndToNode) window.emitEndToNode();
-                });
-            }
-            return originalSend.apply(this, arguments);
-        };
-    });
-
-    const cookiesRaw = process.env.COOKIES || '';
-    if (cookiesRaw) {
-        const cookies = cookiesRaw.split(';').map(pair => {
-            const index = pair.indexOf('=');
-            if (index === -1) return null;
-            return { name: pair.substring(0, index).trim(), value: pair.substring(index + 1).trim(), domain: '.deepseek.com', path: '/' };
-        }).filter(c => c !== null);
-        await page.setCookie(...cookies);
-    }
-
-    if (process.env.SESSION_TOKEN) {
-        await page.evaluateOnNewDocument((tokenText) => {
-            let t = tokenText.replace(/^['"]|['"]$/g, '');
-            try { let parsed = JSON.parse(t); if (parsed.value) t = parsed.value; } catch (e) { }
-            localStorage.setItem('userToken', JSON.stringify({ value: t, __version: "0" }));
-        }, process.env.SESSION_TOKEN);
-    }
-
-    console.log(`[*] DeepSeek: Открываем основную сцену...`);
-    await page.goto('https://chat.deepseek.com', { waitUntil: 'networkidle2' });
-
-    if (page.url().includes('sign_in')) {
-        console.error('[!] DeepSeek: Сессия протухла. Начинаю сброс...');
-        await browser.close();
-        browser = null;
-        renewAuth();
-        return;
-    }
-
-    isInitializing = false;
-    console.log('[+] DeepSeek: Голем на позиции. Алгоритм активен.');
+    await initQueue;
 }
 
 function setupRoutes(app, port) {
+    // API Управления аккаунтами
+    app.get('/api/deepseek/accounts', (req, res) => res.json(getDb()));
+
+    app.post('/api/deepseek/accounts', async (req, res) => {
+        const oldDb = getDb();
+        saveDb(req.body);
+        res.json({ success: true });
+
+        if (req.body.active !== oldDb.active) {
+            console.log('\n[*] DeepSeek: Смена активного профиля...');
+            if (browser) await browser.close().catch(() => { });
+            isBrowserBusy = false;
+            await initProvider(currentPort);
+        }
+    });
+
+    // Перехват пейлоада
     app.get('/receive-payload', async (req, res) => {
         const { token, cookies } = req.query;
         if (token && cookies) {
-            updateEnv('SESSION_TOKEN', token.replace(/(^"|"$)/g, ''));
-            updateEnv('COOKIES', cookies);
-            console.log('\n[+] DeepSeek: ПЕЙЛОАД ПЕРЕХВАЧЕН! Токен сохранен.');
+            const cleanToken = token.replace(/(^"|"$)/g, '');
+            const db = getDb();
 
-            // Читаем и отдаем красивый HTML
+            const existingIdx = db.accounts.findIndex(a => a.token === cleanToken);
+            if (existingIdx >= 0) {
+                db.accounts[existingIdx].cookies = cookies;
+                db.active = existingIdx;
+            } else {
+                db.accounts.push({
+                    name: `Профиль #${db.accounts.length + 1}`,
+                    token: cleanToken,
+                    cookies: cookies
+                });
+                db.active = db.accounts.length - 1;
+            }
+            saveDb(db);
+
+            console.log('\n[+] DeepSeek: ПЕЙЛОАД ПЕРЕХВАЧЕН! Профиль сохранен.');
+
             let html = fs.readFileSync(path.join(__dirname, '../views/success.html'), 'utf8');
             html = html.replace('{{TITLE}}', 'Сессия DeepSeek перехвачена!')
-                .replace('{{MESSAGE}}', 'Алгоритмы ИИ успешно подключены к ядру.')
+                .replace('{{MESSAGE}}', 'Аккаунт успешно добавлен в менеджер профилей.')
                 .replace(/{{COLOR}}/g, '#3b82f6');
             res.send(html);
-
-            if (browser) await browser.close().catch(() => { }).finally(() => browser = null);
+            
+            isBrowserBusy = false;
             await initProvider(currentPort);
         } else {
             res.status(400).send('Ошибка данных. Не удалось извлечь куки.');
@@ -159,6 +237,7 @@ function setupRoutes(app, port) {
     });
 }
 
+// === КОГДА ОШИБОК БОЛЬШЕ НЕТ, СОХРАНЯЕМ ГЕНЕРАЦИЮ В ТОЧНОСТИ ТАКОЙ, КАКАЯ ОНА БЫЛА ===
 async function handleChatCompletion(req, res) {
     if (isInitializing || !page || page.isClosed()) {
         return res.status(503).json({ error: { message: "Провайдер DeepSeek инициализируется.", type: "server_loading" } });
@@ -191,7 +270,6 @@ async function handleChatCompletion(req, res) {
         return false;
     };
 
-    // --- 1. СИСТЕМА ОЧЕРЕДИ ---
     let queueWait = 0;
     while (isBrowserBusy) {
         const abortReason = checkAborted();
@@ -207,7 +285,6 @@ async function handleChatCompletion(req, res) {
         }
     }
 
-    // --- 2. ЗАНИМАЕМ БРАУЗЕР ---
     isBrowserBusy = true;
 
     let sseBuffer = '';

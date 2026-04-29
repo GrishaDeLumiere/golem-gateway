@@ -12,6 +12,8 @@ const IGNORE_LIST = [
     '.env',
     'settings.json',
     'gemini_credentials.json',
+    'deepseek_accounts.json',
+    'qwen_accounts.json',
     'node_modules',
     'temp_update'
 ];

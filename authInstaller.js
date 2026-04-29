@@ -26,7 +26,7 @@ class AuthInstaller {
             if (isCompletelyDisabled) {
                 btnText = 'Заблокировано';
             } else if (p.isAuth) {
-                btnText = p.id === 'gemini' ? 'Управление' : 'Обновить сессию';
+                btnText = 'Управление';
             }
 
             return `

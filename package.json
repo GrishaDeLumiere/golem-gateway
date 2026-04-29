@@ -1,6 +1,6 @@
 {
  "name": "golem-gateway",
- "version": "0.1.2",
+ "version": "0.1.3",
  "description": "Модульный API роутер для нейросетей",
  "main": "start.js",
  "scripts": {

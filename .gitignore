@@ -4,4 +4,6 @@ npm-debug.log
 .DS_Store
 settings.json
 gemini_credentials.json
+deepseek_accounts.json
+qwen_accounts.json
 Thumbs.db

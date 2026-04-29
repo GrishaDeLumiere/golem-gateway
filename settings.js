@@ -10,7 +10,18 @@ const DEFAULT_SETTINGS = {
     },
     debugMode: true,
     defaultModel: "deepseek-v4-flash",
-    masterApiKey: ""
+    enableApiKeys: false,
+    masterApiKey: "",
+    apiKeys: [],
+    particles: {
+        enabled: true,
+        count: 80,
+        speed: 0.2,
+        maxSize: 1.2,
+        connectLines: true,
+        lineDistance: 150,
+        comets: true
+    }
 };
 
 function getSettings() {

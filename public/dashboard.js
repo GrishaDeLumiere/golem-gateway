@@ -1,11 +1,9 @@
 //public/dashboard.js
-
-// 1. Основная логика обычных провайдеров (переименовали, чтобы не было путаницы)
+// 1. Основная логика обычных провайдеров
 function baseOpenModal(id) {
     const data = window.__PROVIDERS__[id];
     if (!data) return;
 
-    // Базовые данные
     document.getElementById('modalIcon').innerHTML = data.logo;
     document.getElementById('modalTitleText').innerText =
         data.isOAuth ? data.name : 'Авторизация: ' + data.name;
@@ -16,7 +14,6 @@ function baseOpenModal(id) {
     const actionBtn = document.getElementById('modalActionBtn');
 
     if (data.isOAuth) {
-        // OAuth (например Google)
         stepsDivs.forEach(div => div.style.display = 'none');
         codeBox.style.display = 'none';
 
@@ -25,7 +22,6 @@ function baseOpenModal(id) {
             window.location.href = data.payload;
         };
     } else {
-        // Обычные провайдеры (копирование скрипта)
         stepsDivs.forEach(div => div.style.display = 'flex');
         codeBox.style.display = 'flex';
 
@@ -49,8 +45,11 @@ function baseOpenModal(id) {
 
 // 2. ГЛАВНАЯ ФУНКЦИЯ-РАСПРЕДЕЛИТЕЛЬ
 function openModal(id) {
+    const data = window.__PROVIDERS__[id];
     if (id === 'gemini') {
         openGeminiManager();
+    } else if (data && data.isAuth) {
+        openGenericManager(id);
     } else {
         baseOpenModal(id);
     }
@@ -80,15 +79,44 @@ async function openSettingsModal() {
         document.getElementById('set-deepseek').checked = settings.providers.deepseek;
         document.getElementById('set-qwen').checked = settings.providers.qwen;
         document.getElementById('set-debug').checked = settings.debugMode;
-        document.getElementById('set-gemini').checked = settings.providers.gemini
+        document.getElementById('set-gemini').checked = settings.providers.gemini;
         document.getElementById('set-default-model').value = settings.defaultModel || 'deepseek-v4-flash';
         document.getElementById('set-api-key').value = settings.masterApiKey || '';
+
+        if (settings.particles) {
+            document.getElementById('set-particles-enabled').checked = settings.particles.enabled;
+
+            document.getElementById('set-particles-count').value = settings.particles.count;
+            document.getElementById('label-p-count').innerText = settings.particles.count;
+
+            document.getElementById('set-particles-speed').value = settings.particles.speed;
+            document.getElementById('label-p-speed').innerText = settings.particles.speed;
+
+            document.getElementById('set-particles-size').value = settings.particles.maxSize;
+            document.getElementById('label-p-size').innerText = settings.particles.maxSize;
+
+            document.getElementById('set-particles-lines').checked = settings.particles.connectLines;
+
+            document.getElementById('set-particles-dist').value = settings.particles.lineDistance;
+            document.getElementById('label-p-dist').innerText = settings.particles.lineDistance;
+
+            document.getElementById('set-particles-comets').checked = settings.particles.comets;
+        }
+
+        // Новые поля
+        document.getElementById('set-enable-auth').checked = settings.enableApiKeys || false;
+        toggleAuthFields();
+
+        currentApiKeys = settings.apiKeys || [];
+        renderApiKeys();
+        hideNewKeyInput();
 
         document.getElementById('settingsModal').classList.add('active');
     } catch (err) {
         alert('Не удалось загрузить настройки с сервера.');
     }
 }
+
 
 async function saveSettings() {
     const btn = document.getElementById('saveSetBtn');
@@ -104,7 +132,17 @@ async function saveSettings() {
         },
         debugMode: document.getElementById('set-debug').checked,
         defaultModel: document.getElementById('set-default-model').value,
-        masterApiKey: document.getElementById('set-api-key').value.trim()
+        masterApiKey: document.getElementById('set-api-key').value.trim(),
+        apiKeys: currentApiKeys,
+        particles: {
+            enabled: document.getElementById('set-particles-enabled').checked,
+            count: parseInt(document.getElementById('set-particles-count').value),
+            speed: parseFloat(document.getElementById('set-particles-speed').value),
+            maxSize: parseFloat(document.getElementById('set-particles-size').value),
+            connectLines: document.getElementById('set-particles-lines').checked,
+            lineDistance: parseInt(document.getElementById('set-particles-dist').value),
+            comets: document.getElementById('set-particles-comets').checked
+        }
     };
 
     try {
@@ -148,19 +186,6 @@ function switchSettingsTab(tabId) {
 
 
 // --- GEMINI ACCOUNTS MANAGER ---
-
-let currentGeminiDb = { active: 0, accounts: [] };
-let editingAccountIndex = -1;
-
-const originalOpenModal = openModal;
-openModal = function (id) {
-    if (id === 'gemini') {
-        openGeminiManager();
-    } else {
-        originalOpenModal(id);
-    }
-};
-
 async function openGeminiManager() {
     document.getElementById('geminiModal').classList.add('active');
 
@@ -351,29 +376,261 @@ function togglePasswordVisibility(inputId, btnEl) {
     }
 }
 
+// --- МЕНЕДЖЕР ПРОФИЛЕЙ DEEPSEEK / QWEN ---
+let currentProviderId = null;
+let currentProviderDb = { active: 0, accounts: [] };
+let genericEditingIndex = -1;
+let isGenericManagerLocked = false; // Флаг блокировки интерфейса
+
+async function openGenericManager(id) {
+    currentProviderId = id;
+    const data = window.__PROVIDERS__[id];
+
+    document.getElementById('genericAccountsIcon').innerHTML = data.logo;
+    document.getElementById('genericAccountsTitle').innerText = 'Аккаунты: ' + data.name;
+    document.getElementById('genericAccountsModal').classList.add('active');
+
+    const listSec = document.getElementById('genericAccountsSection');
+    const editSec = document.getElementById('genericEditorSection');
+
+    listSec.style.display = 'block';
+    editSec.style.display = 'none';
+    listSec.classList.remove('animated-view');
+    void listSec.offsetWidth;
+    listSec.classList.add('animated-view');
+
+    await fetchGenericAccounts();
+}
+
+async function fetchGenericAccounts() {
+    try {
+        const res = await fetch(`/api/${currentProviderId}/accounts`);
+        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+        currentProviderDb = await res.json();
+        renderGenericAccounts();
+    } catch (e) {
+        console.error(`Ошибка загрузки аккаунтов ${currentProviderId}:`, e);
+        currentProviderDb = { active: 0, accounts: [] };
+        renderGenericAccounts();
+    }
+}
+
+function renderGenericAccounts() {
+    const listEl = document.getElementById('genericAccountsList');
+    listEl.innerHTML = '';
+
+    const addBtn = document.querySelector('#genericAccountsSection .btn-primary-solid');
+    if (addBtn) {
+        addBtn.disabled = isGenericManagerLocked;
+        addBtn.style.opacity = isGenericManagerLocked ? '0.5' : '1';
+        addBtn.style.cursor = isGenericManagerLocked ? 'not-allowed' : 'pointer';
+    }
+
+    if (!currentProviderDb.accounts || currentProviderDb.accounts.length === 0) {
+        listEl.innerHTML = `
+ <div style="text-align: center; padding: 60px 20px; border: 1px dashed #27272a; border-radius: 12px; margin-top: 12px;">
+ <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3f3f46" stroke-width="1.5" style="margin-bottom: 16px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+ <p style="color: #a1a1aa; margin: 0; font-size: 15px;">База данных пуста.<br>Добавьте сессию с помощью скрипта перехвата.</p>
+ </div>`;
+        return;
+    }
+
+    currentProviderDb.accounts.forEach((acc, index) => {
+        const isActive = currentProviderDb.active === index;
+        const profileName = acc.name || `Профиль #${index + 1}`;
+        const activeClass = isActive ? 'active-gemini-item' : '';
+
+        const tokenInfo = acc.token ? `token: ${acc.token.substring(0, 6)}...${acc.token.slice(-4)}` : "Нет токена (ошибка базы?)";
+
+        const opacityStyle = isGenericManagerLocked ? 'opacity: 0.5; pointer-events: none;' : '';
+        const cursorStyle = isGenericManagerLocked ? 'cursor: wait;' : 'cursor: pointer;';
+        const disabledAttr = isGenericManagerLocked ? 'disabled' : '';
+
+        const loadIndicator = (isGenericManagerLocked && isActive)
+            ? `<span class="pulse-dot auth" style="display:inline-block; margin-left: 8px; transform: scale(0.8);"></span>`
+            : '';
+
+        const html = `
+ <div class="setting-item ${activeClass}" style="margin-bottom: 12px; ${cursorStyle} ${opacityStyle}" onclick="${isGenericManagerLocked ? '' : `setActiveGeneric(${index})`}">
+ <label class="gemini-radio" title="Активировать профиль">
+ <input type="radio" name="activeGeneric" ${isActive ? 'checked' : ''} onclick="event.stopPropagation()" ${disabledAttr}>
+ <span class="radio-mark"></span>
+ </label>
+
+ <div class="setting-info" style="flex: 1; padding: 0 16px;">
+ <h4 style="margin: 0 0 4px 0; font-size: 15px; color: var(--text); display: flex; align-items: center;">
+ ${profileName} ${loadIndicator}
+ </h4>
+ <div style="font-size: 13px; font-family: monospace; color: var(--text-muted);">${tokenInfo}</div>
+ </div>
+
+ <div style="display: flex; gap: 8px;" onclick="event.stopPropagation()">
+ <button class="btn btn-icon" onclick="editGenericAccount(${index})" title="Переименовать" ${disabledAttr}>
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+ </button>
+ <button class="btn btn-icon btn-danger-flat" onclick="deleteGenericAccount(${index})" title="Удалить" ${disabledAttr}>
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+ </button>
+ </div>
+ </div>`;
+        listEl.insertAdjacentHTML('beforeend', html);
+    });
+}
+
+function addGenericAccount() {
+    if (isGenericManagerLocked) return;
+    document.getElementById('genericAccountsModal').classList.remove('active');
+    baseOpenModal(currentProviderId);
+}
+
+async function saveGenericDb() {
+    await fetch(`/api/${currentProviderId}/accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentProviderDb)
+    });
+}
+
+async function setActiveGeneric(index) {
+    if (isGenericManagerLocked || currentProviderDb.active === index) return;
+
+    isGenericManagerLocked = true;
+    currentProviderDb.active = index;
+    renderGenericAccounts();
+
+    try {
+        await saveGenericDb();
+
+        await new Promise(r => setTimeout(r, 5000));
+
+        const toast = document.getElementById('toast');
+        toast.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Профиль успешно переключен';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 5000);
+
+    } catch (e) {
+        alert('Сбой сети при сохранении настроек!');
+    } finally {
+        isGenericManagerLocked = false;
+        renderGenericAccounts();
+    }
+}
+
+async function deleteGenericAccount(index) {
+    if (isGenericManagerLocked) return;
+    if (!confirm("Удалить этот профиль безвозвратно?")) return;
+
+    isGenericManagerLocked = true;
+    renderGenericAccounts();
+
+    try {
+        currentProviderDb.accounts.splice(index, 1);
+        if (currentProviderDb.active >= currentProviderDb.accounts.length) currentProviderDb.active = 0;
+
+        await saveGenericDb();
+        await new Promise(r => setTimeout(r, 1500));
+    } finally {
+        isGenericManagerLocked = false;
+        renderGenericAccounts();
+    }
+}
+
+function cancelGenericEdit() {
+    const listSec = document.getElementById('genericAccountsSection');
+    const editSec = document.getElementById('genericEditorSection');
+
+    editSec.style.display = 'none';
+    listSec.style.display = 'block';
+
+    listSec.classList.remove('animated-view');
+    void listSec.offsetWidth;
+    listSec.classList.add('animated-view');
+
+    genericEditingIndex = -1;
+}
+
+function editGenericAccount(index) {
+    if (isGenericManagerLocked) return;
+
+    genericEditingIndex = index;
+    let acc = currentProviderDb.accounts[index];
+
+    document.getElementById('genericInputName').value = acc.name || `Профиль #${index + 1}`;
+
+    const listSec = document.getElementById('genericAccountsSection');
+    const editSec = document.getElementById('genericEditorSection');
+
+    listSec.style.display = 'none';
+    editSec.style.display = 'block';
+
+    editSec.classList.remove('animated-view');
+    void editSec.offsetWidth;
+    editSec.classList.add('animated-view');
+}
+
+async function saveGenericEdit() {
+    if (genericEditingIndex === -1) return;
+
+    const newName = document.getElementById('genericInputName').value.trim();
+    currentProviderDb.accounts[genericEditingIndex].name = newName || `Профиль #${genericEditingIndex + 1}`;
+
+    isGenericManagerLocked = true;
+    cancelGenericEdit();
+    renderGenericAccounts();
+
+    try {
+        await saveGenericDb();
+        const toast = document.getElementById('toast');
+        toast.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Имя профиля сохранено';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    } finally {
+        isGenericManagerLocked = false;
+        renderGenericAccounts();
+    }
+}
 
 // --- ЛОГИКА ОБНОВЛЕНИЯ (С ПРОВЕРКОЙ) ---
 async function checkUpdateModal() {
     document.getElementById('updateModal').classList.add('active');
-    document.getElementById('updateMessage').innerHTML = 'Связываемся с GitHub... <span class="pulse-dot auth" style="display:inline-block; margin-left: 8px;"></span>';
+
+    document.getElementById('updateMessageText').innerText = 'Связываемся с репозиторием GitHub...';
+    document.getElementById('updateLoader').style.display = 'flex';
+    document.getElementById('updateVersions').style.display = 'none';
     document.getElementById('startUpdateBtn').style.display = 'none';
+    document.getElementById('forceUpdateDiv').style.display = 'none';
+
+    const actionsDiv = document.getElementById('updateActions');
+    actionsDiv.style.opacity = '0';
+    actionsDiv.style.pointerEvents = 'none';
 
     try {
         const response = await fetch('/api/check-update');
         const data = await response.json();
+        document.getElementById('updateLoader').style.display = 'none';
+        document.getElementById('updateVersions').style.display = 'flex';
+        document.getElementById('verCurrent').innerText = 'v' + data.currentVersion;
+        document.getElementById('verLatest').innerText = 'v' + data.latestVersion;
+
+        actionsDiv.style.opacity = '1';
+        actionsDiv.style.pointerEvents = 'auto';
 
         if (data.updateAvailable) {
-            document.getElementById('updateMessage').innerHTML = 
-                `Найдена новая версия: <b style="color:var(--success)">${data.latestVersion}</b> (Ваша: ${data.currentVersion})<br><br>
-                 <span style="font-size:13px;">Нажмите кнопку ниже, чтобы начать процесс скачивания и замены файлов.</span>`;
-            document.getElementById('startUpdateBtn').style.display = 'flex';
+            document.getElementById('updateMessageText').innerHTML = 'Доступна новая версия ядра <b>AI Core Gateway</b>.';
+            document.getElementById('startUpdateBtn').style.display = 'inline-flex';
+            document.getElementById('forceUpdateDiv').style.display = 'none';
+            document.getElementById('verLatest').style.color = 'var(--success)';
         } else {
-            document.getElementById('updateMessage').innerHTML = 
-                `У вас установлена последняя версия ядра (${data.currentVersion}).<br><br>
-                <span style="font-size:13px; color:var(--text-muted); cursor:pointer; text-decoration:underline;" onclick="openUpdaterWindow()">Принудительная переустановка</span>`;
+            document.getElementById('updateMessageText').innerHTML = 'Вы используете самую актуальную версию.';
+            document.getElementById('startUpdateBtn').style.display = 'none';
+            document.getElementById('forceUpdateDiv').style.display = 'block';
+            document.getElementById('verLatest').style.color = 'var(--text-muted)';
         }
     } catch (err) {
-        document.getElementById('updateMessage').innerHTML = '<span style="color:var(--error)">Ошибка связи с сервером. Попробуйте позже.</span>';
+        document.getElementById('updateLoader').style.display = 'none';
+        document.getElementById('updateMessageText').innerHTML = '<span style="color:var(--error)">Ошибка связи. Сервер обновлений недоступен.</span>';
+        actionsDiv.style.opacity = '1';
+        actionsDiv.style.pointerEvents = 'auto';
     }
 }
 
@@ -381,3 +638,117 @@ function openUpdaterWindow() {
     closeModal();
     window.location.href = '/updater';
 }
+
+// --- УПРАВЛЕНИЕ API КЛЮЧАМИ ---
+
+let currentApiKeys = [];
+
+function toggleAuthFields() {
+    const isEnabled = document.getElementById('set-enable-auth').checked;
+    const container = document.getElementById('auth-fields-container');
+    if (isEnabled) {
+        container.style.opacity = '1';
+        container.style.pointerEvents = 'auto';
+    } else {
+        container.style.opacity = '0.4';
+        container.style.pointerEvents = 'none';
+    }
+}
+
+function showNewKeyInput() {
+    document.getElementById('new-key-container').style.display = 'flex';
+    document.getElementById('new-key-name').focus();
+}
+
+function hideNewKeyInput() {
+    document.getElementById('new-key-container').style.display = 'none';
+    document.getElementById('new-key-name').value = '';
+}
+
+function generateApiKey() {
+    const nameInput = document.getElementById('new-key-name');
+    const name = nameInput.value.trim();
+    if (!name) {
+        nameInput.focus();
+        return;
+    }
+
+    const randomHex = [...Array(32)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    const newKey = 'sk-core-' + randomHex;
+
+    currentApiKeys.push({
+        id: Date.now().toString(),
+        name: name,
+        key: newKey,
+        createdAt: Date.now()
+    });
+
+    renderApiKeys();
+    hideNewKeyInput();
+
+    const toast = document.getElementById('toast');
+    toast.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Токен "${name}" ожидает сохранения`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+function deleteApiKey(id) {
+    const index = currentApiKeys.findIndex(k => k.id === id);
+    if (index === -1) return;
+    currentApiKeys.splice(index, 1);
+    renderApiKeys();
+}
+
+function renderApiKeys() {
+    const listEl = document.getElementById('api-keys-list');
+    listEl.innerHTML = '';
+
+    if (currentApiKeys.length === 0) {
+        listEl.innerHTML = `<div style="text-align: center; padding: 16px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; color: var(--text-muted); font-size: 13px;">Нет сгенерированных токенов</div>`;
+        return;
+    }
+
+    [...currentApiKeys].reverse().forEach((k) => {
+        const dateStr = new Date(k.createdAt).toLocaleDateString();
+
+        listEl.innerHTML += `
+ <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 10px;">
+ <div style="display: flex; flex-direction: column; gap: 4px;">
+ <span style="font-size: 14px; font-weight: 500; color: var(--text);">${k.name}</span>
+ <div style="display: flex; gap: 8px; align-items: center;">
+ <code style="font-family: monospace; font-size: 12px; color: var(--success); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">${k.key.substring(0, 10)}...${k.key.slice(-4)}</code>
+ <span style="font-size: 12px; color: var(--text-muted);">${dateStr}</span>
+ </div>
+ </div>
+ <div style="display: flex; gap: 6px;">
+ <button class="btn-icon" onclick="copyToClipboard('${k.key}')" title="Копировать">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+ </button>
+ <button class="btn-icon btn-danger-flat" onclick="deleteApiKey('${k.id}')" title="Удалить">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+ </button>
+ </div>
+ </div>
+ `;
+    });
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        const toast = document.getElementById('toast');
+        toast.innerHTML = ' Токен скопирован';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }).catch(err => alert('Сбой копирования'));
+}
+
+// Инициализация частиц при загрузке
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+        if (window.AmbientBG && settings.particles) {
+            window.AmbientBG.updateConfig(settings.particles);
+        }
+    } catch (e) { }
+});

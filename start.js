@@ -16,23 +16,38 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '200mb' }));
 
-// --- ЗАЩИТА API (MASTER API KEY) ---
+// --- ЗАЩИТА API (РУБИЛЬНИК + СОХРАНЕНИЕ КЛЮЧЕЙ) ---
 app.use(['/v1', '/chat/completions', '/models'], (req, res, next) => {
     // Пропускаем CORS-preflight запросы
     if (req.method === 'OPTIONS') return next();
 
     const currentSettings = getSettings();
-    const apiKey = currentSettings.masterApiKey;
 
-    // Если пароль в настройках задан (не пустой)
-    if (apiKey && apiKey.trim() !== "") {
+    // Если защита включена рубильником
+    if (currentSettings.enableApiKeys) {
+        const masterKey = currentSettings.masterApiKey || "";
+        const apiKeys = currentSettings.apiKeys || [];
+
         const authHeader = req.headers.authorization || "";
-        if (authHeader !== `Bearer ${apiKey.trim()}`) {
+        const providedKey = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+        let isValid = false;
+
+        // 1. Проверка по мастер-ключа
+        if (masterKey.trim() !== "" && providedKey === masterKey.trim()) {
+            isValid = true;
+        }
+        // 2. Проверка по сгенерированным ключам
+        else if (apiKeys.some(k => k.key === providedKey)) {
+            isValid = true;
+        }
+
+        if (!isValid) {
             if (currentSettings.debugMode) {
-                console.log(`[🔒 ЗАЩИТА] Заблокирован запрос без правильного API-ключа (IP: ${req.ip})`);
+                console.log(`[🔒 ЗАЩИТА] Отказано в доступе (IP: ${req.ip}). Неверный API ключ.`);
             }
             return res.status(401).json({
-                error: { message: "Invalid API Key. Укажите правильный ключ в настройках клиента (IDE)." }
+                error: { message: "Invalid API Key. Доступ запрещен. Укажите правильный ключ." }
             });
         }
     }
