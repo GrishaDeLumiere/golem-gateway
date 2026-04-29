@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const AdmZip = require('adm-zip');
-const { spawn } = require('child_process');
 
 const REPO_ZIP_URL = 'https://github.com/GrishaDeLumiere/golem-gateway/archive/refs/heads/main.zip';
 const TEMP_DIR = path.join(__dirname, 'temp_update');
@@ -13,7 +12,8 @@ const IGNORE_LIST = [
     '.env',
     'settings.json',
     'gemini_credentials.json',
-    'node_modules'
+    'node_modules',
+    'temp_update'
 ];
 
 async function runUpdateStream(res) {
@@ -21,14 +21,14 @@ async function runUpdateStream(res) {
 
     try {
         sendLog('[🔄] Подключение к серверам GitHub...');
-        
+
         const response = await axios({
             url: REPO_ZIP_URL,
             method: 'GET',
             responseType: 'arraybuffer'
         });
 
-        sendLog('[📥] Архив обновления успешно загружен (' + (response.data.byteLength / 1024 / 1024).toFixed(2) + ' MB)');
+        sendLog('[📥] Архив загружен (' + (response.data.byteLength / 1024 / 1024).toFixed(2) + ' MB)');
 
         if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
         const zipPath = path.join(TEMP_DIR, 'update.zip');
@@ -40,26 +40,19 @@ async function runUpdateStream(res) {
 
         const newFilesDir = path.join(TEMP_DIR, EXTRACTED_FOLDER_NAME);
 
-        sendLog('[⚙️] Перезапись файлов ядра...');
-        copyFolderRecursiveSync(newFilesDir, __dirname);
+        sendLog('[🧹] Синхронизация файлов (удаление старых и запись новых)...');
+        syncDirectories(newFilesDir, __dirname);
 
-        sendLog('[🧹] Зачистка временных файлов...');
+        sendLog('[🗑️] Зачистка временных файлов...');
         fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 
-        sendLog('[✅] ОБНОВЛЕНИЕ ЗАВЕРШЕНО! Поднимаем новое окно...');
-        
+        sendLog('[✅] ОБНОВЛЕНИЕ ЗАВЕРШЕНО!');
+        sendLog('[⚠️] Процесс шлюза будет остановлен. Пожалуйста, запустите его заново.');
+
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
 
         setTimeout(() => {
-            if (process.platform === 'win32') {
-                spawn('cmd.exe', ['/c', 'start', '""', 'start.bat'], {
-                    detached: true,
-                    stdio: 'ignore'
-                }).unref();
-            } else {
-                spawn('npm', ['start'], { detached: true, stdio: 'ignore' }).unref();
-            }
             process.exit(0);
         }, 2000);
 
@@ -69,20 +62,32 @@ async function runUpdateStream(res) {
     }
 }
 
-function copyFolderRecursiveSync(source, target) {
+function syncDirectories(source, target) {
     if (!fs.existsSync(target)) fs.mkdirSync(target);
 
-    const files = fs.readdirSync(source);
-    files.forEach(file => {
-        if (IGNORE_LIST.includes(file)) return; 
+    const targetItems = fs.readdirSync(target);
+    targetItems.forEach(item => {
+        if (IGNORE_LIST.includes(item)) return;
 
-        const currentSource = path.join(source, file);
-        const currentTarget = path.join(target, file);
+        const targetPath = path.join(target, item);
+        const sourcePath = path.join(source, item);
 
-        if (fs.lstatSync(currentSource).isDirectory()) {
-            copyFolderRecursiveSync(currentSource, currentTarget);
+        if (!fs.existsSync(sourcePath)) {
+            fs.rmSync(targetPath, { recursive: true, force: true });
+        }
+    });
+
+    const sourceItems = fs.readdirSync(source);
+    sourceItems.forEach(item => {
+        if (IGNORE_LIST.includes(item)) return;
+
+        const sourcePath = path.join(source, item);
+        const targetPath = path.join(target, item);
+
+        if (fs.lstatSync(sourcePath).isDirectory()) {
+            syncDirectories(sourcePath, targetPath);
         } else {
-            fs.copyFileSync(currentSource, currentTarget);
+            fs.copyFileSync(sourcePath, targetPath);
         }
     });
 }
