@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const AdmZip = require('adm-zip');
+const crypto = require('crypto');
 
 const REPO_ZIP_URL = 'https://github.com/GrishaDeLumiere/golem-gateway/archive/refs/heads/main.zip';
 const TEMP_DIR = path.join(__dirname, 'temp_update');
@@ -15,8 +16,37 @@ const IGNORE_LIST = [
     'qwen_accounts.json',
     'node_modules',
     'temp_update',
-    '.git'
+    '.git',
+    '.gitignore'
 ];
+
+function getFileHash(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha256');
+        const stream = fs.createReadStream(filePath);
+
+        stream.on('data', chunk => hash.update(chunk));
+        stream.on('end', () => resolve(hash.digest('hex')));
+        stream.on('error', reject);
+    });
+}
+
+async function safeCopyFile(source, target) {
+    if (!fs.existsSync(target)) {
+        fs.copyFileSync(source, target);
+        return;
+    }
+
+    const [sourceHash, targetHash] = await Promise.all([
+        getFileHash(source),
+        getFileHash(target)
+    ]);
+
+    if (sourceHash === targetHash) {
+        return;
+    }
+    fs.copyFileSync(source, target);
+}
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -59,8 +89,8 @@ async function runUpdateStream(res) {
         const newFilesDir = path.join(TEMP_DIR, EXTRACTED_FOLDER_NAME);
 
         await sleep(800);
-        sendLog('Синхронизация файлов: удаление старых и запись новых блоков...', 'warn');
-        syncDirectories(newFilesDir, __dirname);
+        sendLog('Синхронизация файлов (умное копирование по хэшу)...', 'warn');
+        await syncDirectories(newFilesDir, __dirname);
 
         await sleep(1000);
         sendLog('Мутация файловой системы ядра прошла успешно.', 'success');
@@ -86,12 +116,12 @@ async function runUpdateStream(res) {
     }
 }
 
-function syncDirectories(source, target) {
+async function syncDirectories(source, target) {
     if (!fs.existsSync(target)) fs.mkdirSync(target);
 
     const targetItems = fs.readdirSync(target);
-    targetItems.forEach(item => {
-        if (IGNORE_LIST.includes(item)) return;
+    for (const item of targetItems) {
+        if (IGNORE_LIST.includes(item)) continue;
 
         const targetPath = path.join(target, item);
         const sourcePath = path.join(source, item);
@@ -99,21 +129,20 @@ function syncDirectories(source, target) {
         if (!fs.existsSync(sourcePath)) {
             fs.rmSync(targetPath, { recursive: true, force: true });
         }
-    });
-
+    }
     const sourceItems = fs.readdirSync(source);
-    sourceItems.forEach(item => {
-        if (IGNORE_LIST.includes(item)) return;
+    for (const item of sourceItems) {
+        if (IGNORE_LIST.includes(item)) continue;
 
         const sourcePath = path.join(source, item);
         const targetPath = path.join(target, item);
 
         if (fs.lstatSync(sourcePath).isDirectory()) {
-            syncDirectories(sourcePath, targetPath);
+            await syncDirectories(sourcePath, targetPath);
         } else {
-            fs.copyFileSync(sourcePath, targetPath);
+            await safeCopyFile(sourcePath, targetPath);
         }
-    });
+    }
 }
 
 module.exports = { runUpdateStream };
