@@ -179,5 +179,5 @@ node start.js
 ---
 
 <p align="center">
- <sub>Разработано с 💜 <b>GrishaDeLumiere</b> • <a href="https://github.com/GrishaDeLumiere/golem-gateway/blob/main/LICENSE">MIT License</a> • 2026</sub>
+ <sub>Разработано с 💜 <b>GrishaDeLumiere</b> • <a href="https://github.com/GrishaDeLumiere/golem-gateway/blob/main/LICENSE.md">MIT License</a> • 2026</sub>
 </p>
