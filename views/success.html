@@ -1,49 +1,47 @@
-<!-- views/success.html -->
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/favicon.svg" type="image/x-icon">
-    <title>AI Core | Успешно</title>
-    <style>
-        body { 
-            background: #18181b; 
-            color: {{COLOR}}; 
-            font-family: system-ui, -apple-system, sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0; 
-        }
-        svg { margin-bottom: 24px; filter: drop-shadow(0 0 12px {{COLOR}}40); }
-        h2 { font-size: 28px; margin: 0; font-weight: 600; color: #fff; }
-        p { 
-            color: #a1a1aa; 
-            margin-top: 12px; 
-            font-size: 16px; 
-            text-align: center; 
-            max-width: 400px; 
-            line-height: 1.5; 
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.svg" type="image/x-icon">
+  <title>AI Core | Успешно</title>
+  <link rel="stylesheet" href="/success.css">
+ <style>
+ /* ВАЖНО: Не разделяй фигурные скобки! */
+ :root {
+ --accent-color: {{COLOR}};
+ }
+ </style>
 </head>
+
 <body>
-    <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  <canvas id="particles-canvas" style="position:fixed;inset:0;z-index:-1;pointer-events:none;"></canvas>
+
+  <div class="success-card">
+    <div class="icon-wrapper">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
         <polyline points="22 4 12 14.01 9 11.01"></polyline>
-    </svg>
+      </svg>
+    </div>
     <h2>{{TITLE}}</h2>
     <p id="desc">{{MESSAGE}}</p>
 
-    <script>
-        // Пытаемся автоматически закрыть вкладку через 1.5 секунды
-        setTimeout(() => {
-            window.close();
-            document.getElementById('desc').innerHTML = 'Данные переданы.<br>Можете безопасно закрыть эту вкладку.';
-        }, 1500);
-    </script>
+    <div class="loader-line">
+      <div class="loader-progress"></div>
+    </div>
+  </div>
+
+  <script src="/ambient-particles.js"></script>
+  <script>
+    setTimeout(() => {
+      window.close();
+      document.querySelector('.loader-line').style.display = 'none';
+      document.getElementById('desc').innerHTML = 'Данные успешно переданы в Ядро.<br>Можете закрыть эту вкладку.';
+      document.querySelector('.icon-wrapper').style.animation = 'none';
+    }, 5000);
+  </script>
 </body>
+
 </html>
