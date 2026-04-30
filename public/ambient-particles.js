@@ -27,6 +27,10 @@ class ParticleEngine {
 
         this.resize();
         this.initParticles();
+
+        if (this.config.enabled) {
+            this.animate();
+        }
     }
 
     updateConfig(newConfig) {
@@ -69,20 +73,28 @@ class ParticleEngine {
     }
 
     createComet() {
-        const angle = (Math.PI / 4) + (Math.random() * 0.15 - 0.075);
-        const speed = Math.random() * 8 + 12; 
+        const isLeftToRight = Math.random() > 0.5;
+        const baseAngle = isLeftToRight ? (Math.PI / 4) : (Math.PI * 3 / 4);
+        const angle = baseAngle + (Math.random() * 0.2 - 0.1);
+        const speed = Math.random() * 10 + 15;
 
         const startY = -100 - Math.random() * 100;
-        const startX = (Math.random() * (this.canvas.width * 0.8)) - 200;
+        let startX;
+
+        if (isLeftToRight) {
+            startX = (Math.random() * (this.canvas.width * 0.6)) - 100;
+        } else {
+            startX = (this.canvas.width * 0.4) + (Math.random() * (this.canvas.width * 0.6)) + 100;
+        }
 
         return {
             x: startX,
             y: startY,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            length: Math.random() * 120 + 80,
-            thickness: Math.random() * 1.0 + 0.8,
-            opacity: Math.random() * 0.3 + 0.5
+            length: Math.random() * 150 + 100,
+            thickness: Math.random() * 1.5 + 0.5,
+            opacity: Math.random() * 0.4 + 0.4
         };
     }
 
@@ -151,18 +163,21 @@ class ParticleEngine {
             }
         }
 
-        // 2. Редкое создание комет (шанс 0.1% в кадр = ~1 раз в 16 секунд при 60fps)
-        if (this.config.comets && Math.random() < 0.001) {
+        // 2. Кометы
+        if (this.config.comets && Math.random() < 0.0017) {
             this.comets.push(this.createComet());
         }
 
-        // 3. Отрисовка летящих комет
         for (let i = this.comets.length - 1; i >= 0; i--) {
             let c = this.comets[i];
             c.x += c.vx;
             c.y += c.vy;
 
-            if (c.x > this.canvas.width + c.length || c.y > this.canvas.height + c.length) {
+            if (
+                (c.vx > 0 && c.x > this.canvas.width + c.length) ||
+                (c.vx < 0 && c.x < -c.length) ||
+                (c.y > this.canvas.height + c.length)
+            ) {
                 this.comets.splice(i, 1);
                 continue;
             }
