@@ -1,34 +1,46 @@
-# 🧠 Golem Gateway (AI Core)
+# <img src="./public/favicon.svg" alt="AI Core Logo" width="30" height="30" /> Golem Gateway (AI Core)
 
 <p align="center">
- <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=22&duration=3000&pause=500&color=615CED&center=true&vCenter=true&width=600&lines=Модульный+API-маршрутизатор+для+LLM;Единый+интерфейс+совместимый+с+OpenAI;Перехват+сессий+через+Puppeteer+%26+OAuth2" alt="Typing SVG" />
+ <img src="./public/favicon.svg" alt="AI Core Logo" width="100" height="100" />
 </p>
 
 <p align="center">
- <img src="https://img.shields.io/badge/статус-стабильно-10b981?style=for-the-badge&logo=github&logoColor=white" alt="Status" />
- <img src="https://img.shields.io/badge/версия-v0.1.3-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
- <img src="https://img.shields.io/badge/лицензия-MIT-3b82f6?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" />
- <img src="https://img.shields.io/badge/node.js-≥16-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node" />
- <br>
- <img src="https://img.shields.io/badge/платформа-Windows%20%7C%20Linux%20%7C%20macOS-94a3b8?style=for-the-badge" alt="Platform" />
- <img src="https://img.shields.io/badge/язык-Русский%20%2F%20English-f97316?style=for-the-badge" alt="Language" />
+ <a href="https://github.com/GrishaDeLumiere/golem-gateway/releases">
+  <img src="https://img.shields.io/badge/версия-v0.1.3-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
+ </a>
+ <img src="https://img.shields.io/badge/Node.js-16%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+ <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" />
+ <img src="https://img.shields.io/badge/OpenAI_API-Compatible-blue?style=for-the-badge&logo=openai&logoColor=white" alt="OpenAI Compatible" />
+ 
+</p>
+
+
+<p align="center">
+ <strong>Модульный stateless-маршрутизатор для больших языковых моделей</strong><br>
+ <em>Невидимый мост между веб-интерфейсами ИИ и стандартными API-клиентами</em>
 </p>
 
 ---
 
 ## 🎯 О проекте
 
-**Golem Gateway** — это невидимый мост между веб-интерфейсами искусственного интеллекта и стандартными API-клиентами. Шлюз предоставляет единый REST-интерфейс, полностью совместимый со стандартом **OpenAI API**, используя автоматизацию headless-браузеров (Puppeteer) и перехват **XHR/Fetch** запросов.
+**Golem Gateway** — это прозрачный прокси-шлюз, который предоставляет единый REST-интерфейс, полностью совместимый со стандартом **OpenAI API**, используя автоматизацию headless-браузеров (Puppeteer) и перехват **XHR/Fetch** запросов.
 
 > 💡 **Идея проста:** вы работаете с любимыми клиентами (SillyTavern, Cursor, Cline), а Golem незаметно маршрутизирует запросы через веб-сессии, обходя ограничения прямых API.
 
-### 🧩 Поддерживаемые провайдеры
+---
 
-| Провайдер | Метод | Особенности | Статус |
-|-----------|-------|-------------|--------|
-| **DeepSeek** | `Puppeteer + XHR` | Захват сессии, авто-стерилизация истории | ✅ Стабильно |
-| **Qwen** | `Puppeteer + Fetch` | Локальные сессии, управление пулом аккаунтов | ✅ Стабильно |
-| **Gemini** | `OAuth2 + Google Cloud Code Assist` | Мульти-аккаунты, thinking budget, веб-поиск | ✅ Стабильно |
+## 🧩 Поддерживаемые провайдеры
+
+| Провайдер | Иконка | Метод | Особенности | Статус |
+|-----------|--------|-------|-------------|--------|
+| **DeepSeek** | <img src="./public/deepseek.svg" width="24" /> | `Puppeteer + XHR` | Захват сессии, авто-стерилизация истории | ✅ Стабильно |
+| **Qwen** | <img src="./public/qwen.svg" width="24" /> | `Puppeteer + Fetch` | Локальные сессии, управление пулом аккаунтов | ✅ Стабильно |
+| **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | Мульти-аккаунты, thinking budget, веб-поиск | ✅ Стабильно |
+
+---
+
+
 
 ---
 
