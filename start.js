@@ -1,4 +1,3 @@
-//start.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -18,12 +17,10 @@ app.use(express.json({ limit: '200mb' }));
 
 // --- ЗАЩИТА API (РУБИЛЬНИК + СОХРАНЕНИЕ КЛЮЧЕЙ) ---
 app.use(['/v1', '/chat/completions', '/models'], (req, res, next) => {
-    // Пропускаем CORS-preflight запросы
     if (req.method === 'OPTIONS') return next();
 
     const currentSettings = getSettings();
 
-    // Если защита включена рубильником
     if (currentSettings.enableApiKeys) {
         const masterKey = currentSettings.masterApiKey || "";
         const apiKeys = currentSettings.apiKeys || [];
@@ -33,18 +30,16 @@ app.use(['/v1', '/chat/completions', '/models'], (req, res, next) => {
 
         let isValid = false;
 
-        // 1. Проверка по мастер-ключа
         if (masterKey.trim() !== "" && providedKey === masterKey.trim()) {
             isValid = true;
-        }
-        // 2. Проверка по сгенерированным ключам
-        else if (apiKeys.some(k => k.key === providedKey)) {
+        } else if (apiKeys.some(k => k.key === providedKey)) {
             isValid = true;
         }
 
         if (!isValid) {
+            console.log(`[❌ ЗАЩИТА] Отказано в доступе (IP: ${req.ip}). Неверный API ключ.`);
             if (currentSettings.debugMode) {
-                console.log(`[🔒 ЗАЩИТА] Отказано в доступе (IP: ${req.ip}). Неверный API ключ.`);
+                console.log(`[🐛 DEBUG] Указан ключ: "${providedKey}"`);
             }
             return res.status(401).json({
                 error: { message: "Invalid API Key. Доступ запрещен. Укажите правильный ключ." }
@@ -55,17 +50,14 @@ app.use(['/v1', '/chat/completions', '/models'], (req, res, next) => {
 });
 // -----------------------------------
 
-// 0. Инициализация Дашборда
 const dashboard = new AuthInstaller(PORT);
 dashboard.setup(app);
 
-// 1. Инициализация роутов
 const settings = getSettings();
 deepseekProvider.setupRoutes(app, PORT);
 qwenProvider.setupRoutes(app, PORT);
 geminiProvider.setupRoutes(app, PORT);
 
-// 2. УНИВЕРСАЛЬНЫЕ ЭНДПОИНТЫ API
 app.get(['/v1', '/v1/models'], (req, res) => {
     const currentSettings = getSettings();
     let models = [];
@@ -82,8 +74,9 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
     const currentSettings = getSettings();
     const requestedModel = req.body.model || currentSettings.defaultModel;
 
+    console.log(`\n[📥 РОУТЕР] Поступил запрос на модель: ${requestedModel}`);
     if (currentSettings.debugMode) {
-        console.log(`\n[📥 РОУТЕР] Поступил запрос на модель: ${requestedModel}`);
+        console.log(`[🐛 DEBUG] Stream: ${!!req.body.stream} | Промпт передан провайдеру.`);
     }
 
     try {
@@ -94,10 +87,13 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
         } else if ((requestedModel.startsWith('gemini') || requestedModel.startsWith('learnlm')) && currentSettings.providers.gemini) {
             await geminiProvider.handleChatCompletion(req, res);
         } else {
+            console.log(`[❌ РОУТЕР] Ошибка: Модель ${requestedModel} отключена или не существует.`);
             res.status(403).json({ error: { message: `Модель ${requestedModel} отключена в настройках или не найдена.` } });
         }
     } catch (err) {
-        console.error('[❌ РОУТЕР] Ошибка перенаправления:', err.stack);
+        console.error('[❌ РОУТЕР] Ошибка перенаправления:', err.message);
+        if (currentSettings.debugMode) console.error(err.stack);
+
         if (!res.headersSent) res.status(500).json({ error: { message: err.message, type: "server_error" } });
     }
 });
@@ -105,7 +101,7 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
 // ЗАПУСК ЯДРА
 app.listen(PORT, async () => {
     console.log(`===============================================`);
-    console.log(`[🚀] МОДУЛЬНОЕ ЯДРО СТАРТОВАЛО. Порт: ${PORT}`);
+    console.log(`[🚀] МОДУЛЬНОЕ ЯДРО СТАРТОВАЛО (v0.1.4). Порт: ${PORT}`);
     console.log(`[🔗] Дашборд управления доступен по адресу: http://127.0.0.1:${PORT}`);
     openInDefaultBrowser(`http://127.0.0.1:${PORT}`);
 
@@ -122,7 +118,7 @@ app.listen(PORT, async () => {
         console.log(`[⚠️] Все провайдеры отключены в настройках!`);
     }
 
-    console.log(`[✨] Сцена окончательно готова. Жду указаний, госпожа.`);
+    console.log(`[✨] Сцена окончательно готова. Жду указаний.`);
     console.log(`===============================================`);
 });
 
@@ -132,6 +128,3 @@ function openInDefaultBrowser(url) {
     else if (platform === 'darwin') exec(`open "${url}"`);
     else exec(`xdg-open "${url}"`);
 }
-
-
-

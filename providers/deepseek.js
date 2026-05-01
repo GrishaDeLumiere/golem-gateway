@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { PORT } = require('../config');
+const { getSettings } = require('../settings');
 
 const AuthInstaller = require('../authInstaller');
 const { renderSearchBlock } = require('../searchRenderer');
@@ -55,7 +56,7 @@ function saveDb(db) {
 }
 
 function renewAuth() {
-    console.log('\n[!] DeepSeek: ВНИМАНИЕ: База профилей пуста или сессия мертва. Добавьте аккаунт.');
+    console.log('\n[⚠️ DeepSeek] ВНИМАНИЕ: База профилей пуста или сессия мертва. Добавьте аккаунт.');
 }
 
 function openInDefaultBrowser(url) {
@@ -94,7 +95,7 @@ async function initProviderCore(port = PORT) {
     }
 
     try {
-        console.log('\n[*] DeepSeek: Создаем голема в тенях...');
+        console.log('[⚙️ DeepSeek] Создаем голема в тенях...');
         browser = await puppeteer.launch({
             headless: 'new',
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1280,800']
@@ -152,11 +153,11 @@ async function initProviderCore(port = PORT) {
             }, accToken);
         }
 
-        console.log(`[*] DeepSeek: Открываем основную сцену...`);
+        console.log(`[⚙️ DeepSeek] Открываем основную сцену...`);
         await page.goto('https://chat.deepseek.com', { waitUntil: 'networkidle2' });
 
         if (page.url().includes('sign_in')) {
-            console.error('[!] DeepSeek: Сессия протухла. Начинаю сброс...');
+            console.error('[❌ DeepSeek] Сессия протухла. Начинаю сброс...');
             await browser.close().catch(() => { });
             browser = null;
             renewAuth();
@@ -165,12 +166,12 @@ async function initProviderCore(port = PORT) {
         }
 
         isInitializing = false;
-        console.log('[+] DeepSeek: Голем на позиции. Алгоритм активен.');
+        console.log('[✨ DeepSeek] Голем на позиции. Алгоритм активен.');
     } catch (err) {
         if (err.message.includes('TargetCloseError') || err.message.includes('Session closed') || err.message.includes('Target closed')) {
-            console.log('[-] Настройка старого профиля прервана (выполняется смена контекста).');
+            console.log('[⚙️ DeepSeek] Настройка старого профиля прервана (выполняется смена контекста).');
         } else {
-            console.error('\n[-] Ошибка инициализации:', err.message);
+            console.error('[❌ DeepSeek] Ошибка инициализации:', err.message);
         }
         isInitializing = false;
     }
@@ -184,7 +185,6 @@ async function initProvider(port = PORT) {
 }
 
 function setupRoutes(app, port) {
-    // API Управления аккаунтами
     app.get('/api/deepseek/accounts', (req, res) => res.json(getDb()));
 
     app.post('/api/deepseek/accounts', async (req, res) => {
@@ -193,14 +193,13 @@ function setupRoutes(app, port) {
         res.json({ success: true });
 
         if (req.body.active !== oldDb.active) {
-            console.log('\n[*] DeepSeek: Смена активного профиля...');
+            console.log('[⚙️ DeepSeek] Смена активного профиля...');
             if (browser) await browser.close().catch(() => { });
             isBrowserBusy = false;
             await initProvider(currentPort);
         }
     });
 
-    // Перехват пейлоада
     app.get('/receive-payload', async (req, res) => {
         const { token, cookies } = req.query;
         if (token && cookies) {
@@ -221,7 +220,7 @@ function setupRoutes(app, port) {
             }
             saveDb(db);
 
-            console.log('\n[+] DeepSeek: ПЕЙЛОАД ПЕРЕХВАЧЕН! Профиль сохранен.');
+            console.log('[🔑 DeepSeek] ПЕЙЛОАД ПЕРЕХВАЧЕН! Профиль сохранен.');
 
             let html = fs.readFileSync(path.join(__dirname, '../views/success.html'), 'utf8');
             html = html.replace('{{TITLE}}', 'Сессия DeepSeek перехвачена!')
@@ -237,14 +236,16 @@ function setupRoutes(app, port) {
     });
 }
 
-// === КОГДА ОШИБОК БОЛЬШЕ НЕТ, СОХРАНЯЕМ ГЕНЕРАЦИЮ В ТОЧНОСТИ ТАКОЙ, КАКАЯ ОНА БЫЛА ===
+// === ОБРАБОТКА ГЕНЕРАЦИИ ===
 async function handleChatCompletion(req, res) {
     if (isInitializing || !page || page.isClosed()) {
         return res.status(503).json({ error: { message: "Провайдер DeepSeek инициализируется.", type: "server_loading" } });
     }
 
+    const isDebug = getSettings().debugMode;
     const isStream = req.body.stream;
     let requestedModel = req.body.model || "deepseek-v4-flash";
+
     if (isStream) {
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -274,7 +275,7 @@ async function handleChatCompletion(req, res) {
     while (isBrowserBusy) {
         const abortReason = checkAborted();
         if (abortReason) {
-            console.log(`[!] Запрос [ID: ${myRequestId}] отменен в очереди. Причина: ${abortReason}`);
+            console.log(`[⚠️ DeepSeek] Запрос [ID: ${myRequestId}] отменен в очереди. Причина: ${abortReason}`);
             if (isStream && !res.writableEnded) res.end();
             return;
         }
@@ -364,7 +365,7 @@ async function handleChatCompletion(req, res) {
 
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
-                    process.stdout.write(chunkDelta);
+                    if (isDebug) process.stdout.write(chunkDelta); // Печать только в debug
                     if (isStream && !res.writableEnded) {
                         res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: chunkDelta } }] })}\n\n`);
                     }
@@ -379,7 +380,8 @@ async function handleChatCompletion(req, res) {
         const messages = req.body.messages || [];
         const promptText = messages.map(m => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n---\n\n');
 
-        console.log(`\n[*] DeepSeek [ID: ${myRequestId}]: Запрос обрабатывается... Модель: ${requestedModel}`);
+        console.log(`[🚀 DeepSeek] Старт генерации [ID: ${myRequestId}] -> Модель: ${requestedModel}`);
+        if (isDebug) console.log(`[🐛 DEBUG DeepSeek] Промпт готовится к передаче в браузер.`);
 
         if (checkAborted()) throw new Error(checkAborted());
 
@@ -445,7 +447,7 @@ async function handleChatCompletion(req, res) {
                 res.write(`data: ${JSON.stringify({ id: "ping", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {} }] })}\n\n`);
             }
             if (failSafe > 1200) {
-                console.log('[-] Таймаут генерации.');
+                if (isDebug) console.log('[🐛 DEBUG DeepSeek] Таймаут генерации.');
                 break;
             }
         }
@@ -455,7 +457,7 @@ async function handleChatCompletion(req, res) {
         if (isThinkingContext) {
             const closeThink = `\n\n</think>\n\n`;
             fullAnswer += closeThink;
-            process.stdout.write(closeThink);
+            if (isDebug) process.stdout.write(closeThink);
             if (isStream && !res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: closeThink } }] })}\n\n`);
         }
 
@@ -465,7 +467,7 @@ async function handleChatCompletion(req, res) {
             if (isStream && !res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: searchBlock } }] })}\n\n`);
         }
 
-        console.log(`\n[+] DeepSeek [ID: ${myRequestId}]: Генерация успешна.`);
+        console.log(`[✅ DeepSeek] Успешно завершено [ID: ${myRequestId}]`);
 
         if (isStream && !res.writableEnded) {
             res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
@@ -477,9 +479,11 @@ async function handleChatCompletion(req, res) {
 
     } catch (err) {
         if (err.message.includes('REROLL') || err.message.includes('STOP')) {
-            console.log(`\n[!] DeepSeek[ID: ${myRequestId}]: Запрос прерван. Причина: ${err.message}.`);
+            console.log(`[⚠️ DeepSeek] Запрос [ID: ${myRequestId}] прерван. Причина: ${err.message}.`);
         } else {
-            console.error(`\n[-] Ошибка генерации:`, err.message);
+            console.error(`[❌ DeepSeek] Ошибка генерации: ${err.message}`);
+            if (isDebug) console.error(err.stack);
+
             if (!res.writableEnded) {
                 if (isStream) res.end();
                 else res.status(500).json({ error: { message: err.message } });
@@ -498,11 +502,11 @@ async function handleChatCompletion(req, res) {
                     if (!tokenRaw) return;
                     await fetch('/api/v0/chat_session/delete', { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${JSON.parse(tokenRaw).value}` }, body: JSON.stringify({ chat_session_id: id }) });
                 }, sessionToKill);
-                console.log(`[+] DeepSeek: Облачный чат ${sessionToKill} очищен.`);
+                if (isDebug) console.log(`[🧹 DeepSeek] Облачный чат ${sessionToKill} очищен.`);
             }
             await page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
         } catch (e) {
-            console.error('[-] Ошибка при удалении чата:', e.message);
+            if (isDebug) console.error('[❌ DeepSeek] Ошибка при удалении чата:', e.message);
         }
         isBrowserBusy = false;
     }
@@ -510,7 +514,7 @@ async function handleChatCompletion(req, res) {
 
 async function unloadProvider() {
     if (browser) {
-        console.log(`\n[-] DeepSeek: Получен сигнал на отключение. Выгружаем браузер из памяти...`);
+        console.log(`[⚙️ DeepSeek] Получен сигнал на отключение. Выгружаем браузер из памяти...`);
         await browser.close().catch(() => { });
         browser = null;
         page = null;

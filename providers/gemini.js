@@ -99,7 +99,6 @@ async function getValidToken() {
     const account = getActiveAccount();
     if (!account) throw new Error("Нет авторизованных аккаунтов Gemini");
 
-    // Если токен есть, обновляем через oauth2Client
     if (oauth2Client) {
         oauth2Client.setCredentials({
             access_token: account.token,
@@ -185,18 +184,17 @@ async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming) {
         try { errObj = JSON.parse(errText); } catch (e) { }
 
         const isDebug = getSettings().debugMode;
+        const shortMsg = errObj?.error?.message || "Неизвестная ошибка провайдера";
+        const statusName = errObj?.error?.status || "ERROR";
+
+        if (response.status === 429) {
+            console.error(`[⚠️ Gemini] Ошибка 429: Превышен лимит запросов (Capacity Exhausted)`);
+        } else {
+            console.error(`[❌ Gemini] Ошибка ${response.status} (${statusName}): ${shortMsg}`);
+        }
 
         if (isDebug) {
-            console.error(`[❌ Gemini] Google API Error ${response.status}: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
-        } else {
-            const shortMsg = errObj?.error?.message || "Неизвестная ошибка провайдера";
-            const statusName = errObj?.error?.status || "ERROR";
-
-            if (response.status === 429) {
-                console.error(`[⚠️ Gemini] Ошибка 429: Превышен лимит запросов (Capacity Exhausted)`);
-            } else {
-                console.error(`[❌ Gemini] Ошибка ${response.status} (${statusName}): ${shortMsg}`);
-            }
+            console.error(`[🐛 DEBUG Gemini] Полная ошибка: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
         }
 
         throw new Error(JSON.stringify({ status: response.status, body: errObj || errText }));
@@ -215,8 +213,9 @@ function handleError(e, res) {
     } catch (err) { }
 
     if (!e.message.includes('status=')) {
+        console.error(`[❌ Gemini] Внутренняя ошибка провайдера.`);
         if (getSettings().debugMode) {
-            console.error(`[❌ Gemini] Unexpected Provider Error: ${e.message}`);
+            console.error(`[🐛 DEBUG] ${e.message}`);
         }
     }
     if (!res.headersSent) {
@@ -227,11 +226,11 @@ function handleError(e, res) {
 // --- РОУТЫ И ЛОГИРОВАНИЕ ---
 function setupRoutes(app, PORT) {
 
-    // API для Дашборда (Управление аккаунтами)
+    // API для Дашборда
     app.get('/api/gemini/accounts', (req, res) => res.json(readDb()));
 
     app.post('/api/gemini/accounts', (req, res) => {
-        const db = req.body; // Ожидаем { active: 0, accounts: [...] }
+        const db = req.body;
         writeDb(db);
         res.json({ success: true, db: readDb() });
     });
@@ -299,8 +298,10 @@ function setupRoutes(app, PORT) {
             }
 
             const isDebug = getSettings().debugMode;
+            
+            console.log(`[🚀 Gemini] Старт генерации (Native) -> Модель: ${apiModelName}`);
             if (isDebug) {
-                console.log(`\n[🚀 Gemini Native] Отправка запроса -> Модель: ${apiModelName} | Stream: ${isStreaming}`);
+                console.log(`[🐛 DEBUG Gemini] Stream: ${isStreaming} | Payload Native`);
             }
 
             const googleRes = await fetchGoogleAPI(apiModelName, nativeReq, isStreaming);
@@ -341,12 +342,14 @@ function setupRoutes(app, PORT) {
                 }
                 res.write('data: [DONE]\n\n');
                 res.end();
+                
+                console.log(`[✅ Gemini] Успешно завершено (${apiModelName})`);
 
-                if (isDebug) console.log(`[✅ Gemini Native] [OK] Stream успешно завершен (${apiModelName})`);
             } else {
                 const data = await googleRes.json();
                 res.json(data.response || data);
-                if (isDebug) console.log(`[✅ Gemini Native] [OK] JSON ответ отправлен (${apiModelName})`);
+                
+                console.log(`[✅ Gemini] Успешно завершено (${apiModelName})`);
             }
         } catch (e) {
             handleError(e, res);
@@ -464,8 +467,10 @@ async function handleChatCompletion(req, res) {
         const isStreaming = req.body.stream;
 
         const isDebug = getSettings().debugMode;
+        
+        console.log(`[🚀 Gemini] Старт генерации -> Модель: ${apiModelName}`);
         if (isDebug) {
-            console.log(`\n[🚀 Gemini OpenAI] Отправка запроса -> Модель: ${apiModelName} | Stream: ${isStreaming}`);
+            console.log(`[🐛 DEBUG Gemini] Stream: ${isStreaming} | Payload OpenAI`);
         }
 
         const googleRes = await fetchGoogleAPI(apiModelName, payload, isStreaming);
@@ -502,8 +507,8 @@ async function handleChatCompletion(req, res) {
             }
             res.write('data: [DONE]\n\n');
             res.end();
-
-            if (isDebug) console.log(`[✅ Gemini OpenAI] [OK] Stream успешно завершен (${apiModelName})`);
+            
+            console.log(`[✅ Gemini] Успешно завершено (${apiModelName})`);
 
         } else {
             const geminiJson = await googleRes.json();
@@ -538,7 +543,7 @@ async function handleChatCompletion(req, res) {
             }
             res.json(openaiResp);
 
-            if (isDebug) console.log(`[✅ Gemini OpenAI] [OK] JSON ответ отправлен (${apiModelName})`);
+            console.log(`[✅ Gemini] Успешно завершено (${apiModelName})`);
         }
     } catch (e) {
         handleError(e, res);

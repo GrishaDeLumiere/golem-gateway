@@ -7,12 +7,12 @@
   <link rel="icon" href="/favicon.svg" type="image/x-icon">
   <title>AI Core | Успешно</title>
   <link rel="stylesheet" href="/success.css">
- <style>
- /* ВАЖНО: Не разделяй фигурные скобки! */
- :root {
- --accent-color: {{COLOR}};
- }
- </style>
+  <style>
+    /* ВАЖНО: Не разделяй фигурные скобки! */
+    :root {
+      --accent-color: {{COLOR}};
+    }
+  </style>
 </head>
 
 <body>
@@ -35,10 +35,15 @@
 
   <script src="/ambient-particles.js"></script>
   <script>
+    try {
+      if (window.opener && !window.opener.closed && typeof window.opener.refreshDashboardCards === 'function') {
+        window.opener.refreshDashboardCards();
+      }
+    } catch (e) {}
     setTimeout(() => {
       window.close();
       document.querySelector('.loader-line').style.display = 'none';
-      document.getElementById('desc').innerHTML = 'Данные успешно переданы в Ядро.<br>Можете закрыть эту вкладку.';
+      document.getElementById('desc').innerHTML = 'Данные успешно сохранены в Ядре.<br>Можете закрыть эту вкладку и вернуться к Дашборду.';
       document.querySelector('.icon-wrapper').style.animation = 'none';
     }, 5000);
   </script>

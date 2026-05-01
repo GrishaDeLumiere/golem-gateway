@@ -753,3 +753,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (e) { }
 });
+
+// === АВТО-ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ===
+async function refreshDashboardCards() {
+    try {
+        const res = await fetch('/api/ui-state');
+        if (!res.ok) return;
+        const state = await res.json();
+        const grid = document.querySelector('.grid');
+        if (grid && state.html) {
+            grid.innerHTML = state.html;
+        }
+        if (state.providersMap) {
+            window.__PROVIDERS__ = state.providersMap;
+        }
+    } catch (e) {
+        console.error("Ошибка авто-обновления дашборда:", e);
+    }
+}
+window.refreshDashboardCards = refreshDashboardCards;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        refreshDashboardCards();
+        if (document.getElementById('geminiModal').classList.contains('active')) {
+            fetchGeminiAccounts();
+        }
+        if (document.getElementById('genericAccountsModal').classList.contains('active')) {
+            fetchGenericAccounts();
+        }
+    }
+});

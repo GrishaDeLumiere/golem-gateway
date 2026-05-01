@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { PORT } = require('../config');
+const { getSettings } = require('../settings');
 
 puppeteer.use(StealthPlugin());
 
@@ -63,7 +64,7 @@ function saveDb(db) {
 }
 
 function renewAuth() {
-    console.log('\n[!] Qwen: ВНИМАНИЕ: База профилей пуста или сессия мертва. Добавьте аккаунт через интерфейс.');
+    console.log('\n[⚠️ Qwen] ВНИМАНИЕ: База профилей пуста или сессия мертва. Добавьте аккаунт через интерфейс.');
 }
 
 function openInDefaultBrowser(url) {
@@ -102,7 +103,7 @@ async function initProviderCore(port = PORT) {
     }
 
     try {
-        console.log('\n[*] Qwen: Создаем голема в тенях...');
+        console.log('[⚙️ Qwen] Создаем голема в тенях...');
         browser = await puppeteer.launch({
             headless: 'new',
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1280,800']
@@ -166,7 +167,7 @@ async function initProviderCore(port = PORT) {
             }, accToken);
         }
 
-        console.log(`[*] Qwen: Открываем сцену...`);
+        console.log(`[⚙️ Qwen] Открываем основную сцену...`);
         await page.goto('https://chat.qwen.ai/', { waitUntil: 'networkidle2' });
 
         const needsLogin = await page.evaluate(() => {
@@ -179,7 +180,7 @@ async function initProviderCore(port = PORT) {
         });
 
         if (needsLogin) {
-            console.error('[!] Qwen: Сессия протухла (Требуется вход). Начинаю сброс...');
+            console.error('[❌ Qwen] Сессия протухла (Требуется вход). Начинаю сброс...');
             await browser.close().catch(() => { });
             browser = null;
             renewAuth();
@@ -188,12 +189,12 @@ async function initProviderCore(port = PORT) {
         }
 
         isInitializing = false;
-        console.log('[+] Qwen: Голем на позиции. Алгоритм прямого API активен.');
+        console.log('[✨ Qwen] Голем на позиции. Алгоритм прямого API активен.');
     } catch (err) {
         if (err.message.includes('TargetCloseError') || err.message.includes('Session closed') || err.message.includes('Target closed')) {
-            console.log('[-] Настройка старого профиля прервана (выполняется смена контекста).');
+            console.log('[⚙️ Qwen] Настройка старого профиля прервана (выполняется смена контекста).');
         } else {
-            console.error('\n[-] Ошибка инициализации:', err.message);
+            console.error('[❌ Qwen] Ошибка инициализации:', err.message);
         }
         isInitializing = false;
     }
@@ -207,7 +208,6 @@ async function initProvider(port = PORT) {
 }
 
 function setupRoutes(app, port) {
-    // API Менеджера профилей
     app.get('/api/qwen/accounts', (req, res) => res.json(getDb()));
 
     app.post('/api/qwen/accounts', async (req, res) => {
@@ -216,7 +216,7 @@ function setupRoutes(app, port) {
         res.json({ success: true });
 
         if (req.body.active !== oldDb.active) {
-            console.log('\n[*] Qwen: Смена активного профиля...');
+            console.log('[⚙️ Qwen] Смена активного профиля...');
             if (browser) await browser.close().catch(() => { });
             isBrowserBusy = false;
             await initProvider(currentPort);
@@ -243,7 +243,7 @@ function setupRoutes(app, port) {
             }
             saveDb(db);
 
-            console.log('\n[+] Qwen: ПЕЙЛОАД ПЕРЕХВАЧЕН! Профиль сохранен.');
+            console.log('[🔑 Qwen] ПЕЙЛОАД ПЕРЕХВАЧЕН! Профиль сохранен.');
 
             let html = fs.readFileSync(path.join(__dirname, '../views/success.html'), 'utf8');
             html = html.replace('{{TITLE}}', 'Сессия Qwen захвачена!')
@@ -259,12 +259,13 @@ function setupRoutes(app, port) {
     });
 }
 
-// === КОГДА ОШИБОК БОЛЬШЕ НЕТ, СОХРАНЯЕМ ГЕНЕРАЦИЮ ===
+// === ОБРАБОТКА ГЕНЕРАЦИИ ===
 async function handleChatCompletion(req, res) {
     if (isInitializing || !page || page.isClosed()) {
         return res.status(503).json({ error: { message: "Провайдер Qwen инициализируется.", type: "server_loading" } });
     }
 
+    const isDebug = getSettings().debugMode;
     const isStream = req.body.stream;
     let requestedModel = req.body.model || "qwen3.6-plus";
 
@@ -297,7 +298,7 @@ async function handleChatCompletion(req, res) {
     while (isBrowserBusy) {
         const abortReason = checkAborted();
         if (abortReason) {
-            console.log(`[!] Qwen Запрос [ID: ${myRequestId}] отменен в очереди. Причина: ${abortReason}`);
+            console.log(`[⚠️ Qwen] Запрос [ID: ${myRequestId}] отменен в очереди. Причина: ${abortReason}`);
             if (isStream && !res.writableEnded) res.end();
             return;
         }
@@ -336,7 +337,7 @@ async function handleChatCompletion(req, res) {
 
                 if (data.error) {
                     const errorMessage = data.error.details || data.error.code || 'Неизвестная ошибка';
-                    console.log(`\n[!] Qwen API Ошибка: ${errorMessage}`);
+                    if (isDebug) console.log(`[🐛 DEBUG Qwen] API Ошибка: ${errorMessage}`);
                     chunkDelta += `\n\n[Системное предупреждение Qwen: ${errorMessage}]\n\n`;
                     isFinished = true;
                 } else if (data.choices && data.choices[0]) {
@@ -386,7 +387,7 @@ async function handleChatCompletion(req, res) {
 
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
-                    process.stdout.write(chunkDelta);
+                    if (isDebug) process.stdout.write(chunkDelta); // Печать только в debug
                     if (isStream && !res.writableEnded) {
                         res.write(`data: ${JSON.stringify({ id: "qwen-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: chunkDelta } }] })}\n\n`);
                     }
@@ -402,7 +403,8 @@ async function handleChatCompletion(req, res) {
         const messages = req.body.messages || [];
         const promptText = messages.map(m => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n---\n\n');
 
-        console.log(`\n[*] Qwen [ID: ${myRequestId}]: Запрос обрабатывается (Direct API)... Модель: ${requestedModel}`);
+        console.log(`[🚀 Qwen] Старт генерации [ID: ${myRequestId}] -> Модель: ${requestedModel}`);
+        if (isDebug) console.log(`[🐛 DEBUG Qwen] Отправка Direct API payload.`);
 
         if (checkAborted()) throw new Error(checkAborted());
 
@@ -496,7 +498,7 @@ async function handleChatCompletion(req, res) {
                 res.write(`data: ${JSON.stringify({ id: "ping", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {} }] })}\n\n`);
             }
             if (failSafe > 1200) {
-                console.log('[-] Таймаут генерации.');
+                if (isDebug) console.log('[🐛 DEBUG Qwen] Таймаут генерации.');
                 break;
             }
         }
@@ -506,13 +508,13 @@ async function handleChatCompletion(req, res) {
         if (isThinking) {
             const closeThink = `\n</think>\n\n`;
             fullAnswer += closeThink;
-            process.stdout.write(closeThink);
+            if (isDebug) process.stdout.write(closeThink);
             if (isStream && !res.writableEnded) {
                 res.write(`data: ${JSON.stringify({ id: "qwen-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: closeThink } }] })}\n\n`);
             }
         }
 
-        console.log(`\n[+] Qwen [ID: ${myRequestId}]: Генерация завершена.`);
+        console.log(`[✅ Qwen] Успешно завершено [ID: ${myRequestId}]`);
 
         if (isStream && !res.writableEnded) {
             res.write(`data: ${JSON.stringify({ id: "qwen-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
@@ -524,9 +526,11 @@ async function handleChatCompletion(req, res) {
 
     } catch (err) {
         if (err.message.includes('REROLL') || err.message.includes('STOP')) {
-            console.log(`\n[!] Qwen [ID: ${myRequestId}]: Запрос прерван. Причина: ${err.message}.`);
+            console.log(`[⚠️ Qwen] Запрос [ID: ${myRequestId}] прерван. Причина: ${err.message}.`);
         } else {
-            console.error(`\n[-] Ошибка генерации:`, err.message);
+            console.error(`[❌ Qwen] Ошибка генерации: ${err.message}`);
+            if (isDebug) console.error(err.stack);
+
             if (!res.writableEnded) {
                 if (isStream) res.end();
                 else res.status(500).json({ error: { message: err.message } });
@@ -547,7 +551,7 @@ async function handleChatCompletion(req, res) {
                     if (token) headers['Authorization'] = `Bearer ${token}`;
                     await fetch(`https://chat.qwen.ai/api/v2/chats/${id}`, { method: 'DELETE', headers }).catch(() => { });
                 }, activeChatId);
-                console.log(`[+] Qwen: Облачный чат ${activeChatId} очищен.`);
+                if (isDebug) console.log(`[🧹 Qwen] Облачный чат ${activeChatId} очищен.`);
             } catch (e) { }
         }
 
@@ -557,7 +561,7 @@ async function handleChatCompletion(req, res) {
 
 async function unloadProvider() {
     if (browser) {
-        console.log(`\n[-] Qwen: Получен сигнал на отключение. Выгружаем браузер из памяти...`);
+        console.log(`[⚙️ Qwen] Получен сигнал на отключение. Выгружаем браузер из памяти...`);
         await browser.close().catch(() => { });
         browser = null;
         page = null;

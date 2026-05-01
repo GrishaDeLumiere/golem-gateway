@@ -10,6 +10,8 @@ const axios = require('axios');
 const { spawn } = require('child_process');
 const { runUpdateStream } = require('./updater');
 
+const CURRENT_VERSION = require(path.join(__dirname, 'package.json')).version;
+
 class AuthInstaller {
     constructor(port) {
         this.port = port;
@@ -90,7 +92,6 @@ class AuthInstaller {
             res.json({ success: true, settings: finalSettings });
         });
 
-        // <-- НОВЫЙ ЭНДПОИНТ ДЛЯ REAL-TIME ОБНОВЛЕНИЯ ИНТЕРФЕЙСА
         app.get('/api/ui-state', (req, res) => {
             const settings = getSettings();
             const ObjectProviders = getProviders(this.port);
@@ -114,12 +115,11 @@ class AuthInstaller {
             let html = fs.readFileSync(path.join(viewsPath, 'dashboard.html'), 'utf8');
             html = html.replace("'__PROVIDERS_JSON__'", JSON.stringify(providersMap));
             html = html.replace('<!-- __PROVIDERS_CARDS__ -->', this.getCardsHtml(ObjectProviders, settings));
+            html = html.replace('{{APP_VERSION}}', CURRENT_VERSION);
 
             res.type('text/html').send(html);
         });
 
-
-        const CURRENT_VERSION = require(path.join(__dirname, 'package.json')).version;
 
         // 1. Проверка наличия обновлений на GitHub
         app.get('/api/check-update', async (req, res) => {
@@ -149,7 +149,6 @@ class AuthInstaller {
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
 
-            // Запускаем переписанный апдейтер
             runUpdateStream(res);
         });
 

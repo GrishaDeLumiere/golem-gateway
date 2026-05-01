@@ -6,9 +6,9 @@ const DEFAULT_SETTINGS = {
     providers: {
         deepseek: true,
         qwen: true,
-        gemini: false
+        gemini: true
     },
-    debugMode: true,
+    debugMode: false,
     defaultModel: "deepseek-v4-flash",
     enableApiKeys: false,
     masterApiKey: "",
