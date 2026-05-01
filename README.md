@@ -1,3 +1,7 @@
+<div align="right">
+ <strong>🇷🇺 Русский</strong> | <a href="README.en.md">🇬🇧 English</a>
+</div>
+
 # <img src="./public/favicon.svg" alt="AI Core Logo" width="30" height="30" /> Golem Gateway (AI Core)
 
 <p align="center">
@@ -6,14 +10,12 @@
 
 <p align="center">
  <a href="https://github.com/GrishaDeLumiere/golem-gateway/releases">
-  <img src="https://img.shields.io/badge/версия-v0.1.4-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
+ <img src="https://img.shields.io/badge/версия-v0.1.5-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
  </a>
  <img src="https://img.shields.io/badge/Node.js-16%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" />
  <img src="https://img.shields.io/badge/OpenAI_API-Compatible-blue?style=for-the-badge&logo=openai&logoColor=white" alt="OpenAI Compatible" />
- 
 </p>
-
 
 <p align="center">
  <strong>Модульный stateless-маршрутизатор для больших языковых моделей</strong><br>
@@ -37,10 +39,6 @@
 | **DeepSeek** | <img src="./public/deepseek.svg" width="24" /> | `Puppeteer + XHR` | Захват сессии, авто-стерилизация истории | ✅ Стабильно |
 | **Qwen** | <img src="./public/qwen.svg" width="24" /> | `Puppeteer + Fetch` | Локальные сессии, управление пулом аккаунтов | ✅ Стабильно |
 | **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | Мульти-аккаунты, thinking budget, веб-поиск | ✅ Стабильно |
-
----
-
-
 
 ---
 

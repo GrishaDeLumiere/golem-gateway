@@ -3,10 +3,11 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>AI Core | Установка обновления</title>
+  <title>AI Core | Gateway Update</title>
   <link rel="icon" href="/favicon.svg" type="image/x-icon">
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="/updater.css">
+  <script src="/language.js"></script>
 </head>
 
 <body>
@@ -23,10 +24,10 @@
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
         </div>
-        Установка обновления ядра
+        <span data-i18n="upd_modal_title">Установка обновления ядра</span>
       </h2>
       <div class="status-box">
-        <span id="statusText" style="font-size: 14px; font-weight: 500; color: var(--text-muted);">Выполняется</span>
+        <span id="statusText" style="font-size: 14px; font-weight: 500; color: var(--text-muted);" data-i18n="upd_status_run">Выполняется</span>
         <div class="spinner-ring" id="pulseIndicator" style="width: 18px; height: 18px; border-width: 2px;"></div>
       </div>
     </div>
@@ -36,7 +37,7 @@
     </div>
 
     <button class="btn btn-update" style="width: 100%; justify-content: center; display: none; height: 46px;" id="closeBtn" onclick="window.location.href='/'">
-      Вернуться в панель управления
+      <span data-i18n="upd_btn_return">Вернуться в панель управления</span>
       <div class="update-glow"></div>
     </button>
   </div>
@@ -63,43 +64,48 @@
       p.className = 'log-line ' + type;
 
       p.innerHTML = `
- <span class="log-time">[${getTimestamp()}]</span>
- <span class="log-msg">${text}</span>
- `;
+        <span class="log-time">[${getTimestamp()}]</span>
+        <span class="log-msg">${text}</span>
+      `;
       logsEl.appendChild(p);
       logsEl.scrollTop = logsEl.scrollHeight;
     }
 
-    appendLog("Запуск модуля прошивки шлюза...", "warn");
+    document.addEventListener('DOMContentLoaded', async () => {
+      await window.initLanguage();
+      appendLog(window.t('upd_log_start', 'Запуск модуля прошивки шлюза...'), "warn");
 
-    const evtSource = new EventSource("/api/update-stream");
+      const evtSource = new EventSource("/api/update-stream");
 
-    evtSource.onmessage = function(event) {
-      const data = JSON.parse(event.data);
+      evtSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.msgKey) {
+          let finalMsg = window.t(data.msgKey, data.fallback);
+          if (data.suffix) finalMsg += ` ${data.suffix}`;
 
-      if (data.message) {
-        appendLog(data.message, data.type || 'info');
-      } else if (data.error) {
-        appendLog(`СБОЙ: ${data.error}`, 'error');
-        statusText.innerText = 'Прервано';
-        statusText.style.color = 'var(--error)';
-        pulseIndicator.className = 'pulse-dot no-auth';
-        pulseIndicator.style.animation = 'none';
-        closeBtn.style.display = 'flex';
+          appendLog(finalMsg, data.type || 'info');
+        } else if (data.error) {
+          appendLog(`ERROR: ${data.error}`, 'error');
+          statusText.innerText = window.t('upd_status_abort', 'Прервано');
+          statusText.style.color = 'var(--error)';
+          pulseIndicator.className = 'pulse-dot no-auth';
+          pulseIndicator.style.animation = 'none';
+          closeBtn.style.display = 'flex';
+          evtSource.close();
+        } else if (data.done) {
+          statusText.innerText = window.t('upd_status_done', 'Завершено');
+          statusText.style.color = 'var(--success)';
+          pulseIndicator.className = 'pulse-dot auth';
+          pulseIndicator.style.animation = 'none';
+          closeBtn.style.display = 'flex';
+          evtSource.close();
+        }
+      };
+
+      evtSource.onerror = function() {
         evtSource.close();
-      } else if (data.done) {
-        statusText.innerText = 'Завершено';
-        statusText.style.color = 'var(--success)';
-        pulseIndicator.className = 'pulse-dot auth';
-        pulseIndicator.style.animation = 'none';
-        closeBtn.style.display = 'flex';
-        evtSource.close();
-      }
-    };
-
-    evtSource.onerror = function() {
-      evtSource.close();
-    };
+      };
+    });
   </script>
 </body>
 

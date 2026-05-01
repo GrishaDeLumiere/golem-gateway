@@ -1,4 +1,5 @@
 //public/dashboard.js
+
 // 1. Основная логика обычных провайдеров
 function baseOpenModal(id) {
     const data = window.__PROVIDERS__[id];
@@ -82,6 +83,7 @@ async function openSettingsModal() {
         document.getElementById('set-gemini').checked = settings.providers.gemini;
         document.getElementById('set-default-model').value = settings.defaultModel || 'deepseek-v4-flash';
         document.getElementById('set-api-key').value = settings.masterApiKey || '';
+        document.getElementById('set-language').value = settings.language || 'ru_RU';
 
         if (settings.particles) {
             document.getElementById('set-particles-enabled').checked = settings.particles.enabled;
@@ -125,6 +127,7 @@ async function saveSettings() {
     btn.disabled = true;
 
     const payload = {
+        language: document.getElementById('set-language').value,
         providers: {
             deepseek: document.getElementById('set-deepseek').checked,
             qwen: document.getElementById('set-qwen').checked,
@@ -160,9 +163,14 @@ async function saveSettings() {
 
         window.__PROVIDERS__ = state.providersMap;
 
+        await window.initLanguage();
+
         closeModal();
         const toast = document.getElementById('toast');
-        toast.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Конфигурация ядра обновлена`;
+
+        // Используем window.t для мультиязычного тоста
+        toast.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> ${window.t('toast_saved', 'Конфигурация ядра обновлена')}`;
+
         toast.classList.add('show');
         setTimeout(() => toast.classList.remove('show'), 3000);
 
@@ -591,13 +599,14 @@ async function saveGenericEdit() {
     }
 }
 
-// --- ЛОГИКА ОБНОВЛЕНИЯ (С ПРОВЕРКОЙ) ---
+// --- ЛОГИКА ОБНОВЛЕНИЯ (С АВТО-ИСТОРИЕЙ) --- 
 async function checkUpdateModal() {
     document.getElementById('updateModal').classList.add('active');
 
     document.getElementById('updateMessageText').innerText = 'Связываемся с репозиторием GitHub...';
     document.getElementById('updateLoader').style.display = 'flex';
     document.getElementById('updateVersions').style.display = 'none';
+    document.getElementById('changelogContainer').style.display = 'none';
     document.getElementById('startUpdateBtn').style.display = 'none';
     document.getElementById('forceUpdateDiv').style.display = 'none';
 
@@ -608,10 +617,17 @@ async function checkUpdateModal() {
     try {
         const response = await fetch('/api/check-update');
         const data = await response.json();
+
         document.getElementById('updateLoader').style.display = 'none';
         document.getElementById('updateVersions').style.display = 'flex';
         document.getElementById('verCurrent').innerText = 'v' + data.currentVersion;
         document.getElementById('verLatest').innerText = 'v' + data.latestVersion;
+
+        // Вставляем историю обновлений (если есть)
+        if (data.changelog) {
+            document.getElementById('changelogContainer').style.display = 'block';
+            document.getElementById('changelogContent').innerHTML = data.changelog;
+        }
 
         actionsDiv.style.opacity = '1';
         actionsDiv.style.pointerEvents = 'auto';
@@ -763,6 +779,7 @@ async function refreshDashboardCards() {
         const grid = document.querySelector('.grid');
         if (grid && state.html) {
             grid.innerHTML = state.html;
+            window.applyTranslations(grid);
         }
         if (state.providersMap) {
             window.__PROVIDERS__ = state.providersMap;

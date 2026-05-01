@@ -3,6 +3,7 @@ const path = require('path');
 
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 const DEFAULT_SETTINGS = {
+    language: "ru_RU",
     providers: {
         deepseek: true,
         qwen: true,

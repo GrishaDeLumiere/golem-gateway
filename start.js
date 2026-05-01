@@ -1,10 +1,13 @@
+//start.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
+const path = require('path');
 
 const { PORT } = require('./config');
 const { getSettings } = require('./settings');
+const { version: APP_VERSION } = require(path.join(__dirname, 'package.json'));
 
 const AuthInstaller = require('./authInstaller');
 const deepseekProvider = require('./providers/deepseek');
@@ -101,7 +104,7 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
 // ЗАПУСК ЯДРА
 app.listen(PORT, async () => {
     console.log(`===============================================`);
-    console.log(`[🚀] МОДУЛЬНОЕ ЯДРО СТАРТОВАЛО (v0.1.4). Порт: ${PORT}`);
+    console.log(`[🚀] МОДУЛЬНОЕ ЯДРО СТАРТОВАЛО (v${APP_VERSION}). Порт: ${PORT}`);
     console.log(`[🔗] Дашборд управления доступен по адресу: http://127.0.0.1:${PORT}`);
     openInDefaultBrowser(`http://127.0.0.1:${PORT}`);
 

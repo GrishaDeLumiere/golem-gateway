@@ -8,7 +8,7 @@ const REPO_ZIP_URL = 'https://github.com/GrishaDeLumiere/golem-gateway/archive/r
 const TEMP_DIR = path.join(__dirname, 'temp_update');
 const EXTRACTED_FOLDER_NAME = 'golem-gateway-main';
 
-const IGNORE_LIST = [
+const IGNORE_LIST =[
     '.env',
     'settings.json',
     'gemini_credentials.json',
@@ -53,16 +53,16 @@ function sleep(ms) {
 }
 
 async function runUpdateStream(res) {
-    const sendLog = (msg, type = 'info') => {
-        res.write(`data: ${JSON.stringify({ message: msg, type })}\n\n`);
+    const sendLog = (msgKey, fallback, type = 'info', suffix = '') => {
+        res.write(`data: ${JSON.stringify({ msgKey, fallback, type, suffix })}\n\n`);
     };
 
     try {
         await sleep(600);
-        sendLog('Соединение с серверами репозитория GitHub...', 'info');
+        sendLog('log_connect', 'Соединение с серверами репозитория GitHub...', 'info');
 
         await sleep(800);
-        sendLog('Запрос на получение архива release/main отправлен.', 'success');
+        sendLog('log_req', 'Запрос на получение архива release/main отправлен.', 'success');
 
         const response = await axios({
             url: REPO_ZIP_URL,
@@ -72,36 +72,36 @@ async function runUpdateStream(res) {
 
         const mb = (response.data.byteLength / 1024 / 1024).toFixed(2);
         await sleep(400);
-        sendLog(`Ядро загружено в память (${mb} MB).`, 'success');
+        sendLog('log_download', 'Ядро загружено в память', 'success', `(${mb} MB).`);
 
         if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
         const zipPath = path.join(TEMP_DIR, 'update.zip');
         fs.writeFileSync(zipPath, response.data);
 
         await sleep(800);
-        sendLog('Распаковка файлов в буферную директорию...', 'warn');
+        sendLog('log_extract', 'Распаковка файлов в буферную директорию...', 'warn');
         const zip = new AdmZip(zipPath);
         zip.extractAllTo(TEMP_DIR, true);
 
         await sleep(600);
-        sendLog('Распаковка буфера завершена.', 'success');
+        sendLog('log_extract_done', 'Распаковка буфера завершена.', 'success');
 
         const newFilesDir = path.join(TEMP_DIR, EXTRACTED_FOLDER_NAME);
 
         await sleep(800);
-        sendLog('Синхронизация файлов (умное копирование по хэшу)...', 'warn');
+        sendLog('log_sync', 'Синхронизация файлов (умное копирование по хэшу)...', 'warn');
         await syncDirectories(newFilesDir, __dirname);
 
         await sleep(1000);
-        sendLog('Мутация файловой системы ядра прошла успешно.', 'success');
+        sendLog('log_mutate', 'Мутация файловой системы ядра прошла успешно.', 'success');
 
         await sleep(600);
-        sendLog('Очистка временных файлов...', 'info');
+        sendLog('log_clean', 'Очистка временных файлов...', 'info');
         fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 
         await sleep(400);
-        sendLog('ОБНОВЛЕНИЕ СИСТЕМЫ ЗАВЕРШЕНО!', 'success');
-        sendLog('Процесс шлюза будет принудительно остановлен через 3 сек. для применения изменений.', 'error');
+        sendLog('log_finish', 'ОБНОВЛЕНИЕ СИСТЕМЫ ЗАВЕРШЕНО!', 'success');
+        sendLog('log_restart', 'Процесс шлюза будет принудительно остановлен через 3 сек. для применения изменений.', 'error');
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
