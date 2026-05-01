@@ -298,6 +298,11 @@ function setupRoutes(app, PORT) {
                 nativeReq.generationConfig.thinkingConfig.thinkingBudget = thinkingBudget;
             }
 
+            const isDebug = getSettings().debugMode;
+            if (isDebug) {
+                console.log(`\n[🚀 Gemini Native] Отправка запроса -> Модель: ${apiModelName} | Stream: ${isStreaming}`);
+            }
+
             const googleRes = await fetchGoogleAPI(apiModelName, nativeReq, isStreaming);
 
             if (isStreaming) {
@@ -336,9 +341,12 @@ function setupRoutes(app, PORT) {
                 }
                 res.write('data: [DONE]\n\n');
                 res.end();
+
+                if (isDebug) console.log(`[✅ Gemini Native] [OK] Stream успешно завершен (${apiModelName})`);
             } else {
                 const data = await googleRes.json();
                 res.json(data.response || data);
+                if (isDebug) console.log(`[✅ Gemini Native] [OK] JSON ответ отправлен (${apiModelName})`);
             }
         } catch (e) {
             handleError(e, res);
@@ -455,6 +463,11 @@ async function handleChatCompletion(req, res) {
         const { apiModelName, payload } = openaiRequestToGemini(req.body);
         const isStreaming = req.body.stream;
 
+        const isDebug = getSettings().debugMode;
+        if (isDebug) {
+            console.log(`\n[🚀 Gemini OpenAI] Отправка запроса -> Модель: ${apiModelName} | Stream: ${isStreaming}`);
+        }
+
         const googleRes = await fetchGoogleAPI(apiModelName, payload, isStreaming);
 
         if (isStreaming) {
@@ -490,6 +503,8 @@ async function handleChatCompletion(req, res) {
             res.write('data: [DONE]\n\n');
             res.end();
 
+            if (isDebug) console.log(`[✅ Gemini OpenAI] [OK] Stream успешно завершен (${apiModelName})`);
+
         } else {
             const geminiJson = await googleRes.json();
             const actualResponse = geminiJson.response || geminiJson;
@@ -522,6 +537,8 @@ async function handleChatCompletion(req, res) {
                 });
             }
             res.json(openaiResp);
+
+            if (isDebug) console.log(`[✅ Gemini OpenAI] [OK] JSON ответ отправлен (${apiModelName})`);
         }
     } catch (e) {
         handleError(e, res);
