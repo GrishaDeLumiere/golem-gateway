@@ -1,0 +1,59 @@
+<!-- Модальное окно Проверки Обновления -->
+<div class="modal-overlay" id="updateModal" onclick="closeModal(event)">
+  <div class="modal" style="max-width: 600px; padding: 0; overflow: hidden; text-align: center;">
+    <div style="background: linear-gradient(180deg, rgba(97, 92, 237, 0.1) 0%, transparent 100%); padding: 40px 32px 24px;">
+      <div class="update-icon-wrapper" style="margin: 0 auto 20px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+      </div>
+      <h2 style="font-size: 22px; font-weight: 600; margin: 0 0 8px;" data-i18n="upd_title">Обновление системы</h2>
+      <p id="updateMessageText" style="color: var(--text-muted); font-size: 15px; margin: 0; line-height: 1.5;" data-i18n="upd_loading">Связываемся с сервером...</p>
+    </div>
+
+    <div style="padding: 0 32px 32px;">
+      <div id="updateLoader" style="display: flex; justify-content: center; margin: 24px 0;">
+        <div class="spinner-ring"></div>
+      </div>
+
+      <div id="updateVersions" style="display: none; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 16px; margin: 24px 0; text-align: left; align-items: center; justify-content: space-between;">
+        <div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;" data-i18n="upd_cur_ver">Текущая версия</div>
+          <div id="verCurrent" style="font-family: monospace; font-size: 15px; color: var(--text);">...</div>
+        </div>
+        <div style="color: var(--text-muted); padding: 0 12px;">→</div>
+        <div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px; text-align: right;" data-i18n="upd_new_ver">Доступная версия</div>
+          <div id="verLatest" style="font-family: monospace; font-size: 15px; color: var(--success); font-weight: 600; text-align: right;">...</div>
+        </div>
+      </div>
+      
+      <div id="changelogContainer" style="display: none; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px; margin-bottom: 24px; text-align: left; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">
+        <div style="display: flex; gap: 16px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+          <span id="tabCommitsBtn" style="font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; transition: color 0.2s;" onclick="window.app.updater.switchLogTab('commits')" data-i18n="upd_tab_commits">Коммиты</span>
+          <span id="tabReleasesBtn" style="font-size: 13px; font-weight: normal; color: var(--text-muted); cursor: pointer; transition: color 0.2s;" onclick="window.app.updater.switchLogTab('releases')" data-i18n="upd_tab_releases">Релизы</span>
+        </div>
+        <!-- Абсолютно одинаковые стили скроллбокса для обоих вкладок -->
+        <div id="changelogContent" style="max-height: 220px; overflow-y: auto; padding-right: 8px;"></div>
+        <div id="releasesContent" style="max-height: 220px; overflow-y: auto; padding-right: 8px; display: none;"></div>
+      </div>
+
+      <div id="updateActions" style="display: flex; gap: 12px; justify-content: center; opacity: 0; transition: opacity 0.3s; pointer-events: none;">
+        <button class="btn btn-secondary" style="width: auto; padding: 10px 20px;" onclick="closeModal()" data-i18n="upd_btn_close">Закрыть</button>
+        <button class="btn" id="startUpdateBtn" style="width: auto; padding: 10px 20px; display: none;" onclick="openUpdaterWindow()">
+          <span data-i18n="upd_btn_download">Скачать и установить</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:4px;">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </div>
+
+      <div id="forceUpdateDiv" style="margin-top: 24px; display: none;">
+        <span style="font-size: 13px; color: var(--text-muted); cursor: pointer; text-decoration: underline; transition: color 0.2s;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-muted)'" onclick="openUpdaterWindow()" data-i18n="upd_btn_force">Принудительная переустановка файлов</span>
+      </div>
+    </div>
+  </div>
+</div>

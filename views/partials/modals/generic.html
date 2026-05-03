@@ -1,0 +1,44 @@
+<!-- Модальное окно управления профилями (DeepSeek, Qwen) -->
+<div class="modal-overlay" id="genericAccountsModal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>
+        <span id="genericAccountsIcon" style="display:inline-flex; align-items:center; width:28px; margin-right: 12px;"></span>
+        <span id="genericAccountsTitle" data-i18n="gen_title">Менеджер профилей</span>
+      </h2>
+      <button class="close-btn" onclick="closeModal(event)">×</button>
+    </div>
+    <div class="gemini-view-container">
+      <div id="genericAccountsSection" class="animated-view">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+          <div style="max-width: 65%;">
+            <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 500;" data-i18n="gem_pool_title">Управление пулом</h3>
+            <p style="color: var(--text-muted); margin: 0; font-size: 14px; line-height: 1.5;" data-i18n="gen_pool_desc">
+              Переключайтесь между профилями или добавляйте новые сессии.
+            </p>
+          </div>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 16px; font-size: 14px;" onclick="addGenericAccount()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span data-i18n="gen_btn_add">Добавить сессию</span>
+          </button>
+        </div>
+        <div id="genericAccountsList" style="max-height: 380px; overflow-y: auto; padding-right: 4px;"></div>
+      </div>
+      <div id="genericEditorSection" class="animated-view" style="display: none;">
+        <div class="gemini-form-container">
+          <div class="gemini-form-group">
+            <label for="genericInputName" data-i18n="gem_name_label">Название профиля</label>
+            <input type="text" id="genericInputName" data-i18n="gen_name_placeholder" placeholder="Например: Основной аккаунт" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-flat" style="width: auto; padding: 10px 20px;" onclick="cancelGenericEdit()" data-i18n="btn_back">Назад</button>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="saveGenericEdit()" data-i18n="gen_btn_save">Сохранить профиль</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

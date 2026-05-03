@@ -1,0 +1,101 @@
+<!-- Модальное окно Gemini Account Manager -->
+<div class="modal-overlay" id="geminiModal" onclick="closeModal(event)">
+  <div class="modal">
+    <!-- Убрали нижний бордер, чтобы табы смотрелись органично -->
+    <div class="modal-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+      <h2>
+        <img src="/gemini.svg" width="28" height="28" style="filter: drop-shadow(0 0 10px rgba(66, 133, 244, 0.4)); margin-right: 12px;" alt="Gemini">
+        <span data-i18n="gemini_title">Менеджер профилей Gemini</span>
+      </h2>
+      <button class="close-btn" onclick="closeModal(event)">×</button>
+    </div>
+
+    <!-- Новые AAA-табы -->
+    <div class="gemini-tabs" id="geminiTabsContainer">
+      <button class="gemini-tab-btn active" onclick="switchGeminiTab('accounts')" data-i18n="gem_tab_pool">Пул аккаунтов</button>
+      <button class="gemini-tab-btn" onclick="switchGeminiTab('settings')" data-i18n="gem_tab_settings">Настройки</button>
+    </div>
+
+    <div class="gemini-view-container">
+
+      <!-- ЭКРАН 1: Аккаунты -->
+      <div id="geminiAccountsSection" class="animated-view">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div style="max-width: 65%;">
+            <p style="color: var(--text-muted); margin: 0; font-size: 14px; line-height: 1.5;" data-i18n="gem_pool_desc">
+              Переключайтесь между профилями при ошибке <code>429</code>.
+            </p>
+          </div>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 16px; font-size: 14px;" onclick="addGeminiAccount()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span data-i18n="gem_btn_add">Добавить профиль</span>
+          </button>
+        </div>
+        <div id="geminiAccountsList" style="max-height: 340px; overflow-y: auto; padding-right: 4px;"></div>
+      </div>
+
+      <!-- ЭКРАН 2: Глобальные настройки Gemini -->
+      <div id="geminiSettingsSection" class="animated-view" style="display: none;">
+        <div class="gemini-form-container">
+          <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 500;" data-i18n="gem_set_regen_title">Настройки регенерации (429)</h3>
+
+          <div class="gemini-form-group">
+            <label for="geminiSetRetries" data-i18n="gem_set_retries">Лимит попыток (Реролов)</label>
+            <input type="number" id="geminiSetRetries" min="0" max="10" value="1">
+            <span style="font-size: 12px; color: var(--text-muted); margin-top: -4px;" data-i18n="gem_set_retries_desc">Автоматически пересоздает запрос к API при Exhausted Capacity.</span>
+          </div>
+
+          <div class="gemini-form-group" style="margin-top: 8px;">
+            <label for="geminiSetDelay" data-i18n="gem_set_delay">Задержка между попытками (мс)</label>
+            <input type="number" id="geminiSetDelay" min="0" step="500" value="2000">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="window.app.accounts.saveProviderSettings('gemini')" data-i18n="gem_btn_save">Сохранить изменения</button>
+        </div>
+      </div>
+
+      <!-- ЭКРАН 3: Редактор конкретного аккаунта -->
+      <div id="geminiEditorSection" class="animated-view" style="display: none;">
+        <div class="guide-banner">
+          <div class="guide-banner-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </div>
+          <div class="guide-banner-text">
+            <strong style="color: #fff; font-size: 15px; display: block; margin-bottom: 6px;" data-i18n="gem_req_title">Требуется привязка Project ID</strong>
+            <span data-i18n="gem_req_1">1. Перейдите в <a href="https://console.cloud.google.com/welcome" target="_blank" style="color: #60a5fa; text-decoration: none; border-bottom: 1px dashed #60a5fa;">Google Cloud Console</a>.<br></span>
+            <span data-i18n="gem_req_2">2. В левом верхнем углу скопируйте <b>ID вашего проекта</b> (Project ID).<br></span>
+            <span data-i18n="gem_req_3">3. Вставьте его в поле ниже.</span>
+          </div>
+        </div>
+
+        <div class="gemini-form-container">
+          <div class="gemini-form-group">
+            <label for="geminiInputName" data-i18n="gem_name_label">Название профиля</label>
+            <input type="text" id="geminiInputName" placeholder="Например: Рабочий аккаунт" data-i18n="gem_name_placeholder" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="gemini-form-group">
+            <label for="geminiInputProjectId">
+              <span data-i18n="gem_project_id_label">Project ID</span> <span style="color: var(--error)">*</span>
+            </label>
+            <input type="text" id="geminiInputProjectId" placeholder="my-project-123" data-i18n="gem_project_id_placeholder" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-flat" style="width: auto; padding: 10px 20px;" onclick="cancelGeminiEdit()" data-i18n="btn_back">Назад</button>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="saveGeminiEdit()" data-i18n="gem_btn_save">Сохранить изменения</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

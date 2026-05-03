@@ -9,6 +9,12 @@ const DEFAULT_SETTINGS = {
         qwen: true,
         gemini: true
     },
+    providerSettings: {
+        gemini: {
+            maxRetries: 0,
+            retryDelay: 2000
+        }
+    },
     debugMode: false,
     defaultModel: "deepseek-v4-flash",
     enableApiKeys: false,

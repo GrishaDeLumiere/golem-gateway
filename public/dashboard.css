@@ -1103,6 +1103,75 @@
      font-family: -apple-system, sans-serif;
  }
 
+ /* Segmented Control (Tabs) */
+ .gemini-tabs {
+     display: flex;
+     background: rgba(0, 0, 0, 0.3);
+     border-radius: 10px;
+     padding: 4px;
+     margin-bottom: 20px;
+     border: 1px solid rgba(255, 255, 255, 0.05);
+ }
+
+ .gemini-tab-btn {
+     flex: 1;
+     background: transparent;
+     border: none;
+     padding: 10px;
+     color: var(--text-muted);
+     font-size: 14px;
+     font-weight: 500;
+     border-radius: 8px;
+     cursor: pointer;
+     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+ }
+
+ .gemini-tab-btn:hover {
+     color: var(--text);
+ }
+
+ .gemini-tab-btn.active {
+     background: rgba(255, 255, 255, 0.1);
+     color: #fff;
+     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+ }
+
+ /* --- СТИЛИ DRAG & DROP ДЛЯ АККАУНТОВ --- */
+ .setting-item {
+     transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+ }
+
+ .setting-item.dragging {
+     opacity: 0.4;
+     border: 1px dashed var(--accent) !important;
+     background: rgba(0, 0, 0, 0.5) !important;
+     transform: scale(0.98);
+ }
+
+ .setting-item.drag-over {
+     border-top: 2px solid var(--accent) !important;
+     background: rgba(97, 92, 237, 0.1) !important;
+ }
+
+ .drag-handle {
+     cursor: grab;
+     color: var(--text-muted);
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     width: 24px;
+     margin-right: 8px;
+     transition: color 0.2s;
+ }
+
+ .drag-handle:hover {
+     color: var(--text);
+ }
+
+ .drag-handle:active {
+     cursor: grabbing;
+ }
+
  /* --- СТИЛИ ДЛЯ ПОЛЗУНКОВ (RANGE) --- */
  input[type="range"] {
      -webkit-appearance: none;
@@ -1273,15 +1342,18 @@
      }
  }
 
- #changelogContent::-webkit-scrollbar {
+ #changelogContent::-webkit-scrollbar,
+ #releasesContent::-webkit-scrollbar {
      width: 6px;
  }
 
- #changelogContent::-webkit-scrollbar-thumb {
+ #changelogContent::-webkit-scrollbar-thumb,
+ #releasesContent::-webkit-scrollbar-thumb {
      background: rgba(255, 255, 255, 0.1);
      border-radius: 10px;
  }
 
- #changelogContent::-webkit-scrollbar-track {
+ #changelogContent::-webkit-scrollbar-track,
+ #releasesContent::-webkit-scrollbar-track {
      background: transparent;
  }
