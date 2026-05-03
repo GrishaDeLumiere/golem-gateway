@@ -13,7 +13,7 @@
  <img src="https://img.shields.io/badge/version-v0.1.5-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
  </a>
  <img src="https://img.shields.io/badge/Node.js-16%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
- <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" />
+ <img src="https://img.shields.io/badge/License-AGPL%203.0-red?style=for-the-badge&logo=gnu&logoColor=white" alt="License" />
  <img src="https://img.shields.io/badge/OpenAI_API-Compatible-blue?style=for-the-badge&logo=openai&logoColor=white" alt="OpenAI Compatible" />
 </p>
 
@@ -177,5 +177,5 @@ node start.js
 ---
 
 <p align="center">
- <sub>Developed with 💜 by <b>GrishaDeLumiere</b> • <a href="https://github.com/GrishaDeLumiere/golem-gateway/blob/main/LICENSE.md">MIT License</a> • 2026</sub>
+ <sub>Developed with 💜 by <b>GrishaDeLumiere</b> • <a href="https://github.com/GrishaDeLumiere/golem-gateway/blob/main/LICENSE">AGPL-3.0 License</a> • 2026</sub>
 </p>
