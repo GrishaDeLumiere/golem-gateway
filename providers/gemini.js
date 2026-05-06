@@ -161,7 +161,7 @@ async function ensureProjectAndOnboard(token, projectIdFromCreds) {
 }
 
 // --- НАДЕЖНЫЙ КЛИЕНТ GOOGLE API ---
-async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming) {
+async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming, signal = null) {
     const settings = getSettings();
     const maxRetries = settings.providerSettings?.gemini?.maxRetries ?? 1;
     const delayMs = settings.providerSettings?.gemini?.retryDelay ?? 2000;
@@ -171,6 +171,10 @@ async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming) {
     let attempt = 0;
 
     while (attempt <= maxRetries) {
+        if (signal && signal.aborted) {
+            throw new Error("AbortError");
+        }
+
         const currentAttempt = attempt + 1;
         const { token, projectId: cachedProjectId } = await getValidToken();
         const projectId = await ensureProjectAndOnboard(token, cachedProjectId);
@@ -186,42 +190,50 @@ async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming) {
             console.log(`[🚀 Gemini] Создание первого запроса (${currentAttempt}/${totalAttempts}) -> Модель: ${apiModelName}`);
         }
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "GeminiCLI/1.0.0" },
-            body: JSON.stringify({ model: apiModelName, project: projectId, request: requestPayload })
-        });
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "GeminiCLI/1.0.0" },
+                body: JSON.stringify({ model: apiModelName, project: projectId, request: requestPayload }),
+                signal: signal
+            });
 
-        if (!response.ok) {
-            let errText = await response.text();
-            let errObj = null;
-            try { errObj = JSON.parse(errText); } catch (e) { }
+            if (!response.ok) {
+                let errText = await response.text();
+                let errObj = null;
+                try { errObj = JSON.parse(errText); } catch (e) { }
 
-            const shortMsg = errObj?.error?.message || "Неизвестная ошибка провайдера";
-            const statusName = errObj?.error?.status || "ERROR";
+                const shortMsg = errObj?.error?.message || "Неизвестная ошибка провайдера";
+                const statusName = errObj?.error?.status || "ERROR";
 
-            if (response.status === 429) {
-                console.error(`[⚠️ Gemini] Ошибка 429: Превышен лимит запросов (Capacity Exhausted). Попытка ${currentAttempt}/${totalAttempts}`);
+                if (response.status === 429) {
+                    console.error(`[⚠️ Gemini] Ошибка 429: Превышен лимит запросов (Capacity Exhausted). Попытка ${currentAttempt}/${totalAttempts}`);
 
-                if (attempt < maxRetries) {
-                    attempt++;
-                    if (isDebug) console.log(`[⏳ Gemini] Ждем ${delayMs}мс перед реролом...`);
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
-                    console.log(`[🔂 Gemini] Повторный старт генерации (${attempt + 1}/${totalAttempts}) -> Модель: ${apiModelName}`);
-                    continue;
+                    if (attempt < maxRetries) {
+                        attempt++;
+                        if (isDebug) console.log(`[⏳ Gemini] Ждем ${delayMs}мс перед реролом...`);
+                        await new Promise(resolve => setTimeout(resolve, delayMs));
+                        console.log(`[🔂 Gemini] Повторный старт генерации (${attempt + 1}/${totalAttempts}) -> Модель: ${apiModelName}`);
+                        continue;
+                    }
+                } else {
+                    console.error(`[❌ Gemini] Ошибка ${response.status} (${statusName}) на попытке ${currentAttempt}/${totalAttempts}: ${shortMsg}`);
                 }
-            } else {
-                console.error(`[❌ Gemini] Ошибка ${response.status} (${statusName}) на попытке ${currentAttempt}/${totalAttempts}: ${shortMsg}`);
+
+                if (isDebug) {
+                    console.error(`[🐛 DEBUG Gemini] Полная ошибка: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
+                }
+
+                throw new Error(JSON.stringify({ status: response.status, body: errObj || errText }));
             }
 
-            if (isDebug) {
-                console.error(`[🐛 DEBUG Gemini] Полная ошибка: ${errObj ? JSON.stringify(errObj, null, 2) : errText}`);
+            return response;
+        } catch (error) {
+            if (error.name === 'AbortError' || (signal && signal.aborted)) {
+                throw new Error("AbortError");
             }
-
-            throw new Error(JSON.stringify({ status: response.status, body: errObj || errText }));
+            throw error;
         }
-
-        return response;
     }
 }
 
@@ -286,6 +298,17 @@ function setupRoutes(app, PORT) {
 
     app.post(['/v1beta/models/*', '/models/*'], async (req, res) => {
         if (!fs.existsSync(CREDENTIAL_FILE)) return res.status(401).json({ error: { message: "Не авторизован." } });
+        const controller = new AbortController();
+        req.on('aborted', () => {
+            console.log(`[🛑 Gemini Native] Запрос прерван клиентом (aborted). Отменяем генерацию...`);
+            controller.abort();
+        });
+        res.on('close', () => {
+            if (!res.writableEnded) {
+                console.log(`[🛑 Gemini Native] Соединение закрыто до завершения ответа. Отменяем генерацию...`);
+                controller.abort();
+            }
+        });
 
         try {
             let fullPath = decodeURIComponent(req.params[0]);
@@ -322,12 +345,12 @@ function setupRoutes(app, PORT) {
 
             const isDebug = getSettings().debugMode;
 
-            console.log(`[🚀 Gemini] Старт генерации (Native) -> Модель: ${apiModelName}`);
+            console.log(`[🚀 Gemini Native] Старт генерации -> Модель: ${apiModelName}`);
             if (isDebug) {
                 console.log(`[🐛 DEBUG Gemini] Stream: ${isStreaming} | Payload Native`);
             }
 
-            const googleRes = await fetchGoogleAPI(apiModelName, nativeReq, isStreaming);
+            const googleRes = await fetchGoogleAPI(apiModelName, nativeReq, isStreaming, controller.signal);
 
             if (isStreaming) {
                 res.setHeader('Content-Type', 'text/event-stream');
@@ -363,18 +386,23 @@ function setupRoutes(app, PORT) {
                         }
                     }
                 }
-                res.write('data: [DONE]\n\n');
+                res.write('data:[DONE]\n\n');
                 res.end();
 
-                console.log(`[✅ Gemini] Успешно завершено (${apiModelName})`);
+                console.log(`[✅ Gemini Native] Успешно завершено (${apiModelName})`);
 
             } else {
                 const data = await googleRes.json();
                 res.json(data.response || data);
 
-                console.log(`[✅ Gemini] Успешно завершено (${apiModelName})`);
+                console.log(`[✅ Gemini Native] Успешно завершено (${apiModelName})`);
             }
         } catch (e) {
+            if (e.message === "AbortError" || e.name === "AbortError") {
+                if (getSettings().debugMode) console.log(`[🛑 Gemini Native] Процесс генерации прерван из-за дисконнекта.`);
+                if (!res.writableEnded) return res.end();
+                return;
+            }
             handleError(e, res);
         }
     });
