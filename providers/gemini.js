@@ -136,7 +136,7 @@ function getClientMetadata(projectId = null) {
 
 async function ensureProjectAndOnboard(token, projectIdFromCreds) {
     let projectId = projectIdFromCreds;
-    const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "GeminiCLI/0.35.3 (win32; x64; terminal)" };
+    const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "GeminiCLI/0.41.2" };
 
     if (!projectId) {
         try {
@@ -193,7 +193,7 @@ async function fetchGoogleAPI(apiModelName, requestPayload, isStreaming, signal 
         try {
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "GeminiCLI/0.35.3 (win32; x64; terminal)" },
+                headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "GeminiCLI/0.41.2" },
                 body: JSON.stringify({ model: apiModelName, project: projectId, request: requestPayload }),
                 signal: signal
             });
