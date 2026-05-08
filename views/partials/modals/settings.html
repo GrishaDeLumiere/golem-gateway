@@ -177,6 +177,42 @@
               </select>
             </div>
 
+            <!-- Поле настройки токена GitHub -->
+            <div class="setting-item" style="flex-direction: column; align-items: stretch; gap: 16px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                  <div class="setting-icon" style="background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.2);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                    </svg>
+                  </div>
+                  <div class="setting-info" style="padding: 0;">
+                    <h4 data-i18n="sys_github_title">Токен GitHub (Лимиты API)</h4>
+                    <p data-i18n="sys_github_desc">Необходим для снятия лимитов апдейтера (5000 запросов/час). Не ставьте никакие галочки Select scopes, это не требуется.</p>
+                  </div>
+                </div>
+
+                <a href="https://github.com/settings/tokens/new?description=Golem%20Gateway%20Rate%20Limit%20Fix" target="_blank" class="btn btn-secondary" style="width: auto; padding: 6px 12px; font-size: 13px; min-height: unset; gap: 6px; text-decoration: none;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                  <span data-i18n="sys_github_get_token">Получить токен</span>
+                </a>
+              </div>
+
+              <div style="width: 100%; position: relative;">
+                <input type="password" id="set-github-token" class="modern-input" data-i18n="sys_github_placeholder" placeholder="Вставьте токен ghp_... (оставьте пустым для отключения)" spellcheck="false" autocomplete="off" style="width: 100%;">
+                <button class="btn-icon" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: transparent; padding: 4px;" onclick="window.togglePasswordVisibility('set-github-token', this)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
             <!-- Настройка языка -->
             <div class="setting-item">
               <div class="setting-icon" style="background: rgba(97, 92, 237, 0.1); color: var(--accent); border-color: rgba(97, 92, 237, 0.2);">

@@ -107,61 +107,91 @@ class AuthInstaller {
         // --- МИНИ-ПАРСЕР MARKDOWN ---
         function formatMarkdownToHtml(md) {
             if (!md) return "Без описания";
-            let html = md.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            html = html.replace(/^### (.*$)/gim, '<div style="font-weight: 600; color: #fff; margin: 12px 0 6px;">$1</div>');
-            html = html.replace(/^## (.*$)/gim, '<div style="font-weight: 600; font-size: 14px; color: #fff; margin: 14px 0 8px;">$1</div>');
-            html = html.replace(/^# (.*$)/gim, '<div style="font-weight: bold; font-size: 15px; color: var(--accent); margin: 16px 0 10px;">$1</div>');
-            html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #fff;">$1</strong>');
+            let html = md.replace(/</g, '<').replace(/>/g, '>');
+            html = html.replace(/^### (.*$)/gim, '<div style="font-weight: 600; color: var(--text); margin: 16px 0 8px; display: flex; align-items: center; gap: 8px;"><span style="width: 4px; height: 14px; background: var(--accent); border-radius: 2px;"></span>$1</div>');
+            html = html.replace(/^## (.*$)/gim, '<div style="font-weight: 600; font-size: 14px; color: var(--text); margin: 18px 0 10px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">$1</div>');
+            html = html.replace(/^# (.*$)/gim, '<div style="font-weight: bold; font-size: 16px; color: var(--accent); margin: 20px 0 12px;">$1</div>');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--text); font-weight: 600;">$1</strong>');
             html = html.replace(/\*(.*?)\*/g, '<em style="color: var(--text-muted);">$1</em>');
-            html = html.replace(/`([^`]+)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #a6e22e;">$1</code>');
-            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: #60a5fa; text-decoration: none;">$1</a>');
-            html = html.replace(/^\s*[-*]\s+(.*)$/gim, '<div style="display: flex; gap: 6px; margin-bottom: 4px; padding-left: 8px;"><span style="color: var(--accent);">•</span><span>$1</span></div>');
+            html = html.replace(/`([^`]+)`/g, '<code style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); padding: 2px 6px; border-radius: 6px; font-family: \'Consolas\', monospace; font-size: 12px; color: #a6e22e; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);">$1</code>');
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: #60a5fa; text-decoration: none; border-bottom: 1px dashed rgba(96, 165, 250, 0.4); padding-bottom: 1px; transition: all 0.2s;">$1</a>');
+            html = html.replace(/^\s*[-*]\s+(.*)$/gim, '<div style="display: flex; gap: 8px; margin-bottom: 6px; padding-left: 4px;"><span style="color: var(--accent); font-size: 14px; line-height: 1.4;">•</span><span style="color: var(--text-muted); line-height: 1.5;">$1</span></div>');
             html = html.split('\n').filter(line => line.trim() !== '').map(line => {
-                if (line.match(/^<div/)) return line; 
-                return `<div style="margin-bottom: 6px;">${line}</div>`;
+                if (line.match(/^<div/)) return line;
+                return `<div style="margin-bottom: 8px; color: var(--text-muted); line-height: 1.5;">${line}</div>`;
             }).join('');
 
             return html;
         }
 
         app.get('/api/check-update', async (req, res) => {
+            const currentSettings = getSettings();
             const now = Date.now();
             if (updateCache && (now - lastUpdateCheck < CACHE_TTL)) {
                 return res.json(updateCache);
             }
 
             try {
-                const response = await axios.get('https://raw.githubusercontent.com/GrishaDeLumiere/golem-gateway/main/package.json');
+
+                const response = await axios.get('https://raw.githubusercontent.com/GrishaDeLumiere/golem-gateway/main/package.json', {
+                    timeout: 5000
+                });
+
+                if (!response.data || typeof response.data !== 'object' || !response.data.version) {
+                    throw new Error("GitHub вернул битый ответ или лимит запросов (не JSON).");
+                }
+
                 const latestVersion = response.data.version;
                 let changelogHtml = "<div style='color: var(--text-muted); font-size: 13px;' data-i18n='upd_no_data'>Нет данных об изменениях.</div>";
                 let releasesHtml = "<div style='color: var(--text-muted); font-size: 13px;' data-i18n='upd_no_data'>Нет данных о релизах.</div>";
 
                 try {
+                    const reqOpts = {
+                        headers: { 'User-Agent': 'Golem-Gateway-App' },
+                        timeout: 5000
+                    };
+
+                    if (currentSettings.githubToken && currentSettings.githubToken.trim() !== '') {
+                        reqOpts.headers['Authorization'] = `token ${currentSettings.githubToken.trim()}`;
+                    }
+
                     const [commitsRes, releasesRes] = await Promise.all([
-                        axios.get('https://api.github.com/repos/GrishaDeLumiere/golem-gateway/commits?per_page=10', { headers: { 'User-Agent': 'Golem-Gateway-App' } }).catch(() => ({ data: [] })),
-                        axios.get('https://api.github.com/repos/GrishaDeLumiere/golem-gateway/releases?per_page=5', { headers: { 'User-Agent': 'Golem-Gateway-App' } }).catch(() => ({ data: [] }))
+                        axios.get('https://api.github.com/repos/GrishaDeLumiere/golem-gateway/commits?per_page=10', reqOpts).catch(err => {
+                            console.warn(`[⚠️ Апдейтер] Не смог загрузить коммиты (лимит GitHub?): ${err.message}`);
+                            return { data: [] };
+                        }),
+                        axios.get('https://api.github.com/repos/GrishaDeLumiere/golem-gateway/releases?per_page=5', reqOpts).catch(err => {
+                            console.warn(`[⚠️ Апдейтер] Не смог загрузить релизы (лимит GitHub?): ${err.message}`);
+                            return { data: [] };
+                        })
                     ]);
 
-                    // Рендер коммитов
+                    // === КОММИТЫ (КАРТОЧКИ) ===
                     if (commitsRes.data && commitsRes.data.length > 0) {
                         changelogHtml = "";
                         commitsRes.data.forEach(item => {
                             const fullMsg = item.commit.message.trim();
                             if (!fullMsg.startsWith('Merge branch') && !fullMsg.startsWith('Merge pull request')) {
                                 const parts = fullMsg.split('\n');
-                                const escapeHtml = (text) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                const escapeHtml = (text) => text.replace(/</g, '<').replace(/>/g, '>');
                                 const title = escapeHtml(parts[0]);
                                 const details = parts.slice(1).map(escapeHtml).join('<br>').trim();
 
-                                changelogHtml += `<div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed rgba(255,255,255,0.05);">`;
-                                changelogHtml += `<div style="color: #fff; font-weight: 500; font-size: 14px; margin-bottom: 4px; display: flex; gap: 8px;"><span style="color: var(--accent);">⚡</span> ${title}</div>`;
-                                if (details) changelogHtml += `<div style="color: #a1a1aa; font-size: 12px; padding-left: 10px; border-left: 2px solid rgba(255,255,255,0.1); margin-top: 6px; line-height: 1.5; font-family: monospace;">${details}</div>`;
+                                changelogHtml += `<div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 14px; margin-bottom: 12px; transition: all 0.2s;">`;
+                                changelogHtml += `<div style="color: var(--text); font-weight: 500; font-size: 14px; display: flex; align-items: flex-start; gap: 10px;">`;
+                                changelogHtml += `<div style="display: flex; align-items: center; justify-content: center; background: rgba(97, 92, 237, 0.15); color: var(--accent); width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;">⚡</div>`;
+                                changelogHtml += `<div style="line-height: 1.4; padding-top: 2px;">${title}</div>`;
+                                changelogHtml += `</div>`;
+
+                                if (details) {
+                                    changelogHtml += `<div style="color: var(--text-muted); font-size: 12px; margin-top: 12px; margin-left: 34px; padding: 10px 12px; background: rgba(0, 0, 0, 0.3); border-radius: 8px; font-family: 'Consolas', monospace; line-height: 1.5; border: 1px solid rgba(255, 255, 255, 0.03);">${details}</div>`;
+                                }
                                 changelogHtml += `</div>`;
                             }
                         });
                     }
 
-                    // Рендер красивых Markdown релизов
+                    // === РЕЛИЗЫ (АКЦЕНТНЫЕ КАРТОЧКИ) ===
                     if (releasesRes.data && releasesRes.data.length > 0) {
                         releasesHtml = "";
                         releasesRes.data.forEach(item => {
@@ -169,21 +199,25 @@ class AuthInstaller {
                             const dateStr = new Date(item.published_at).toLocaleDateString();
                             const formattedBody = formatMarkdownToHtml(item.body);
 
-                            releasesHtml += `<div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px dashed rgba(255,255,255,0.05);">`;
-                            releasesHtml += `
- <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
- <div style="color: #fff; font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center;">
- <span style="color: #10b981;">📦</span> ${title}
- </div>
- <div style="color: var(--text-muted); font-size: 12px; font-family: monospace; background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 6px;">${dateStr}</div>
- </div>`;
-                            releasesHtml += `<div style="color: #a1a1aa; font-size: 13px; line-height: 1.5;">${formattedBody}</div>`;
+                            releasesHtml += `<div style="background: rgba(16, 185, 129, 0.03); border: 1px solid rgba(16, 185, 129, 0.1); border-radius: 14px; padding: 18px; margin-bottom: 16px; position: relative;">`;
+
+                            // Шапка релиза
+                            releasesHtml += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 14px;">`;
+                            releasesHtml += `<div style="color: var(--text); font-weight: 600; font-size: 15px; display: flex; gap: 10px; align-items: center;">`;
+                            releasesHtml += `<div style="background: rgba(16, 185, 129, 0.15); color: var(--success); width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(16, 185, 129, 0.2);">📦</div>`;
+                            releasesHtml += `<span>${title}</span>`;
+                            releasesHtml += `</div>`;
+                            releasesHtml += `<div style="color: var(--success); font-size: 12px; font-family: 'Consolas', monospace; background: rgba(16, 185, 129, 0.1); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">${dateStr}</div>`;
+                            releasesHtml += `</div>`;
+
+                            // Тело релиза
+                            releasesHtml += `<div style="font-size: 13px;">${formattedBody}</div>`;
                             releasesHtml += `</div>`;
                         });
                     }
 
                 } catch (e) {
-                    console.log(`[Апдейтер] Сбой загрузки истории: ${e.message}`);
+                    console.log(`[❌ Апдейтер] Сбой загрузки истории: ${e.message}`);
                 }
 
                 updateCache = {
@@ -196,7 +230,8 @@ class AuthInstaller {
                 lastUpdateCheck = now;
                 res.json(updateCache);
             } catch (err) {
-                res.status(500).json({ error: 'Не удалось проверить обновления' });
+                console.error('\n[❌ АПДЕЙТЕР] Полный отвал проверки версии:', err.message);
+                res.status(500).json({ error: 'Не удалось проверить обновления', details: err.message });
             }
         });
 

@@ -28,7 +28,8 @@ const DEFAULT_SETTINGS = {
         connectLines: true,
         lineDistance: 150,
         comets: true
-    }
+    },
+    githubToken: ""
 };
 
 function getSettings() {

@@ -16,6 +16,7 @@ export class SettingsManager {
             document.getElementById('set-default-model').value = settings.defaultModel || 'deepseek-v4-flash';
             document.getElementById('set-api-key').value = settings.masterApiKey || '';
             document.getElementById('set-language').value = settings.language || 'ru_RU';
+            document.getElementById('set-github-token').value = settings.githubToken || '';
 
             if (settings.particles) {
                 document.getElementById('set-particles-enabled').checked = settings.particles.enabled;
@@ -50,6 +51,7 @@ export class SettingsManager {
         btn.disabled = true;
 
         const payload = {
+            githubToken: document.getElementById('set-github-token').value.trim(),
             language: document.getElementById('set-language').value,
             providers: {
                 deepseek: document.getElementById('set-deepseek').checked,

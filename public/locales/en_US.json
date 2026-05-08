@@ -128,5 +128,9 @@
   "upd_actual": "You are using the latest version.",
   "upd_error": "<span style=\"color:var(--error)\">Connection error. Update server is unreachable.</span>",
   "upd_tab_commits": "Commits",
-  "upd_tab_releases": "Releases"
+  "upd_tab_releases": "Releases",
+  "sys_github_title": "GitHub Token (API Limits)",
+  "sys_github_desc": "Required to bypass updater limits (5000 requests/hour). Do not check any 'Select scopes' boxes, it's not needed.",
+  "sys_github_get_token": "Get Token",
+  "sys_github_placeholder": "Paste ghp_... token (leave empty to disable)"
 }

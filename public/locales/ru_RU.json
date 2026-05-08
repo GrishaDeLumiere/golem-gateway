@@ -128,5 +128,9 @@
     "upd_actual": "Вы используете самую актуальную версию.",
     "upd_error": "<span style=\"color:var(--error)\">Ошибка связи. Сервер обновлений недоступен.</span>",
     "upd_tab_commits": "Коммиты",
-    "upd_tab_releases": "Релизы"
+    "upd_tab_releases": "Релизы",
+    "sys_github_title": "Токен GitHub (Лимиты API)",
+    "sys_github_desc": "Необходим для снятия лимитов апдейтера (5000 запросов/час). Не ставьте никакие галочки Select scopes, это не требуется.",
+    "sys_github_get_token": "Получить токен",
+    "sys_github_placeholder": "Вставьте токен ghp_... (оставьте пустым для отключения)"
 }
