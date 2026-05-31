@@ -97,17 +97,27 @@ async function initProviderCore(port = PORT) {
     try {
         console.log('[⚙️ DeepSeek] Создаем голема в тенях...');
         browser = await puppeteer.launch({
-            headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1280,800']
+            headless: 'new', // на 'false' ставь если хочешь дебажить глазами
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled',
+                '--window-size=1280,800',
+                '--disable-web-security', // Убиваем CORS для васма
+                '--disable-features=IsolateOrigins,site-per-process' // Чтобы воркеры антифрода не падали
+
+            ]
         });
 
         page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
 
         await page.exposeFunction('emitChunkToNode', (text) => networkStreamEvents.emit('chunk', text));
         await page.exposeFunction('emitEndToNode', () => networkStreamEvents.emit('end'));
 
+        // Вшиваем троян: патчим и XHR, и FETCH
         await page.evaluateOnNewDocument(() => {
+            // 1. Старый хук на случай отката фронта
             const originalOpen = XMLHttpRequest.prototype.open;
             const originalSend = XMLHttpRequest.prototype.send;
             XMLHttpRequest.prototype.open = function (method, url) {
@@ -132,6 +142,48 @@ async function initProviderCore(port = PORT) {
                     });
                 }
                 return originalSend.apply(this, arguments);
+            };
+
+            // 2. АБСОЛЮТНО НОВЫЙ ХУК ДЛЯ FETCH (Именно он сейчас работает в DeepSeek)
+            const originalFetch = window.fetch;
+            window.fetch = async function (...args) {
+                const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+                const response = await originalFetch.apply(this, args);
+
+                if (url.includes('/api/v0/chat/completion') && response.body) {
+                    const clone = response.clone();
+
+                    // Хак 228 левела: Если сервер лег (503) или ответил обычным JSON вместо стрима
+                    if (!response.ok || (response.headers.get('content-type') || '').includes('application/json')) {
+                        clone.text().then(text => {
+                            if (window.emitChunkToNode) window.emitChunkToNode(`data: {"custom_error": ${JSON.stringify(text)}}\n\n`);
+                            if (window.emitEndToNode) window.emitEndToNode();
+                        }).catch(() => {
+                            if (window.emitEndToNode) window.emitEndToNode();
+                        });
+                        return response;
+                    }
+
+                    // Нормальный стрим генерации
+                    const reader = clone.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    (async () => {
+                        try {
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) {
+                                    if (window.emitEndToNode) window.emitEndToNode();
+                                    break;
+                                }
+                                const chunk = decoder.decode(value, { stream: true });
+                                if (chunk && window.emitChunkToNode) window.emitChunkToNode(chunk);
+                            }
+                        } catch (e) {
+                            if (window.emitEndToNode) window.emitEndToNode();
+                        }
+                    })();
+                }
+                return response;
             };
         });
 
@@ -166,10 +218,10 @@ async function initProviderCore(port = PORT) {
         }
 
         isInitializing = false;
-        console.log('[✨ DeepSeek] Голем на позиции. Алгоритм активен.');
+        console.log('[✨ DeepSeek] Голем на позиции. Алгоритм активен. Fetch-перехват инжектирован.');
     } catch (err) {
-        if (err.message.includes('TargetCloseError') || err.message.includes('Session closed') || err.message.includes('Target closed')) {
-            console.log('[⚙️ DeepSeek] Настройка старого профиля прервана (выполняется смена контекста).');
+        if (err.message.includes('TargetCloseError') || err.message.includes('Session closed')) {
+            console.log('[⚙️ DeepSeek] Смена контекста прервана.');
         } else {
             console.error('[❌ DeepSeek] Ошибка инициализации:', err.message);
         }
@@ -227,7 +279,7 @@ function setupRoutes(app, port) {
                 .replace('{{MESSAGE}}', 'Аккаунт успешно добавлен в менеджер профилей.')
                 .replace(/{{COLOR}}/g, '#3b82f6');
             res.send(html);
-            
+
             isBrowserBusy = false;
             await initProvider(currentPort);
         } else {
@@ -312,6 +364,18 @@ async function handleChatCompletion(req, res) {
             try {
                 const data = JSON.parse(cleanLine);
                 let chunkDelta = '';
+
+                // === ОБРАБОТКА ИСКЛЮЧЕНИЙ СЕРВЕРА ===
+                if (data?.custom_error) {
+                    let errStr = data.custom_error;
+                    try {
+                        const j = JSON.parse(errStr);
+                        errStr = j.message || j.error?.message || errStr;
+                    } catch (e) { }
+
+                    chunkDelta += `\n❌ [СЕРВЕР DEEPSEEK УПАЛ]: ${errStr}\nСервера сейчас под шквалом запросов (Тех. работы).`;
+                    isFinished = true; // Вырубаем ожидание
+                }
 
                 if (data?.p === 'response/status' && data?.v === 'FINISHED') isFinished = true;
                 if (data?.quasi_status === 'FINISHED') isFinished = true;
@@ -427,9 +491,64 @@ async function handleChatCompletion(req, res) {
         if (checkAborted()) throw new Error(checkAborted());
 
         await page.waitForSelector('textarea');
-        await page.focus('textarea');
-        await page.evaluate((text) => document.execCommand('insertText', false, text), promptText);
-        await new Promise(r => setTimeout(r, 300));
+
+        // ТРОЙНАЯ СТРАХОВКА ВСТАВКИ
+        const inserted = await page.evaluate(async (text) => {
+            const textarea = document.querySelector('textarea');
+            if (!textarea) return false;
+
+            try {
+                // Метод 1: Прямой сеттер (обходит React)
+                const nativeSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLTextAreaElement.prototype, 'value'
+                ).set;
+                nativeSetter.call(textarea, text);
+
+                // Метод 2: Триггерим ВСЕ события которые слушает React
+                textarea.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                textarea.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+
+                // Метод 3: Имитация реального ввода (симуляция нажатий)
+                textarea.click();
+
+                return textarea.value.length > 0; // Проверяем реально ли вставилось
+            } catch (e) {
+                return false;
+            }
+        }, promptText);
+
+        // Если не вставилось - пробуем через буфер обмена с разрешениями
+        if (!inserted) {
+            console.log('[⚠️ DeepSeek] Первый метод не сработал, пробую Clipboard API...');
+
+            // Даем разрешение браузеру на clipboard
+            const context = browser.defaultBrowserContext();
+            await context.overridePermissions('https://chat.deepseek.com', ['clipboard-read', 'clipboard-write']);
+
+            await page.evaluate(async (text) => {
+                const textarea = document.querySelector('textarea');
+                if (!textarea) return;
+
+                textarea.focus();
+                await navigator.clipboard.writeText(text);
+                document.execCommand('paste');
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }, promptText);
+        }
+
+        // Жесткая проверка что текст реально в поле
+        const textInField = await page.evaluate(() => {
+            const ta = document.querySelector('textarea');
+            return ta ? ta.value.length : 0;
+        });
+
+        if (textInField < 10) {
+            throw new Error(`ТЕКСТ НЕ ВСТАВИЛСЯ! В поле ${textInField} символов из ${promptText.length}`);
+        }
+
+        console.log(`[✅ DeepSeek] Вставлено ${textInField} символов`);
+        await new Promise(r => setTimeout(r, 500));
 
         networkStreamEvents.on('chunk', handleChunk);
         networkStreamEvents.on('end', onEnd);
@@ -453,6 +572,18 @@ async function handleChatCompletion(req, res) {
         }
 
         if (checkAborted()) throw new Error(checkAborted());
+
+        // АНТИДЕДИНСАЙД ПРОВЕРКА - Читаем всплывающие ошибки на странице!
+        if (fullAnswer.trim() === '') {
+            const pageError = await page.evaluate(() => {
+                const err = document.querySelector('.arco-message-error, .arco-message-content, [class*="toast"]');
+                return err ? err.innerText : null;
+            });
+            if (pageError) {
+                throw new Error(`DeepSeek UI Заблочил: ${pageError}`);
+            }
+            throw new Error('СГЕНЕРИРОВАН ПУСТОЙ ОТВЕТ! Сервера лежат нахуй, ответ полностью пуст.');
+        }
 
         if (isThinkingContext) {
             const closeThink = `\n\n</think>\n\n`;
