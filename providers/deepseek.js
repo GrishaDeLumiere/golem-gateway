@@ -97,7 +97,7 @@ async function initProviderCore(port = PORT) {
     try {
         console.log('[⚙️ DeepSeek] Создаем голема в тенях...');
         browser = await puppeteer.launch({
-            headless: false, // Измените 'new' на false для отладки глазами
+            headless: 'new', // Измените 'new' на false для отладки глазами
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
