@@ -97,15 +97,14 @@ async function initProviderCore(port = PORT) {
     try {
         console.log('[⚙️ DeepSeek] Создаем голема в тенях...');
         browser = await puppeteer.launch({
-            headless: 'new', // на 'false' ставь если хочешь дебажить глазами
+            headless: false, // Измените 'new' на false для отладки глазами
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-blink-features=AutomationControlled',
                 '--window-size=1280,800',
-                '--disable-web-security', // Убиваем CORS для васма
-                '--disable-features=IsolateOrigins,site-per-process' // Чтобы воркеры антифрода не падали
-
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
             ]
         });
 
@@ -206,7 +205,13 @@ async function initProviderCore(port = PORT) {
         }
 
         console.log(`[⚙️ DeepSeek] Открываем основную сцену...`);
-        await page.goto('https://chat.deepseek.com', { waitUntil: 'networkidle2' });
+        await page.goto('https://chat.deepseek.com', { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await new Promise(r => setTimeout(r, 2500));
+
+        const captchaCleared = await checkAndHandleCaptcha(page);
+        if (!captchaCleared) {
+            console.log('[⚠️ DeepSeek] Внимание: Инициализация завершена, но капча не была пройдена.');
+        }
 
         if (page.url().includes('sign_in')) {
             console.error('[❌ DeepSeek] Сессия протухла. Начинаю сброс...');
@@ -286,6 +291,43 @@ function setupRoutes(app, port) {
             res.status(400).send('Ошибка данных. Не удалось извлечь куки.');
         }
     });
+}
+
+async function checkAndHandleCaptcha(page) {
+    try {
+        const isCaptchaPresent = await page.evaluate(() => {
+            const hasCaptchaContainer = !!document.querySelector('#captcha-container');
+            const hasWafScript = Array.from(document.querySelectorAll('script')).some(script =>
+                script.src && (script.src.includes('awswaf.com') || script.src.includes('captcha.js'))
+            );
+            const isVerificationTitle = document.title && document.title.includes('Human Verification');
+
+            return hasCaptchaContainer || hasWafScript || isVerificationTitle;
+        });
+
+        if (isCaptchaPresent) {
+            console.log('[⚠️ DeepSeek] Обнаружена капча AWS WAF. Попытка перезагрузки страницы...');
+
+            await page.reload({ waitUntil: 'networkidle2' });
+            await new Promise(r => setTimeout(r, 2000));
+
+            const stillHasCaptcha = await page.evaluate(() => {
+                return !!document.querySelector('#captcha-container') ||
+                    (document.title && document.title.includes('Human Verification'));
+            });
+
+            if (stillHasCaptcha) {
+                console.log('[❌ DeepSeek] Перезагрузка страницы не помогла обойти капчу.');
+                return false;
+            } else {
+                console.log('[✅ DeepSeek] Капча исчезла после перезагрузки страницы.');
+                return true;
+            }
+        }
+    } catch (err) {
+        console.error('[❌ DeepSeek] Ошибка при проверке/обработке капчи:', err.message);
+    }
+    return true;
 }
 
 // === ОБРАБОТКА ГЕНЕРАЦИИ ===
@@ -462,6 +504,11 @@ async function handleChatCompletion(req, res) {
         }
 
         if (checkAborted()) throw new Error(checkAborted());
+
+        const captchaCleared = await checkAndHandleCaptcha(page);
+        if (!captchaCleared) {
+            throw new Error('Не удалось обойти капчу AWS WAF при помощи перезагрузки.');
+        }
 
         const wantsSearch = requestedModel.includes('search');
         const wantsThink = requestedModel.includes('think');
