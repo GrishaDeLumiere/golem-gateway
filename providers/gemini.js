@@ -127,7 +127,7 @@ function unloadProvider() {
 
 function getClientMetadata(projectId = null) {
     return {
-        ideType: "IDE_UNSPECIFIED",
+        ideType: "VSCODE",
         platform: process.platform === "win32" ? "WINDOWS_AMD64" : (process.platform === "darwin" ? "DARWIN_AMD64" : "LINUX_AMD64"),
         pluginType: "GEMINI",
         duetProject: projectId
