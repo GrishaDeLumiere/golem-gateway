@@ -10,7 +10,7 @@
 
 <p align="center">
  <a href="https://github.com/GrishaDeLumiere/golem-gateway/releases">
- <img src="https://img.shields.io/badge/version-v0.2.1-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
+ <img src="https://img.shields.io/badge/version-v0.2.2-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
  </a>
  <img src="https://img.shields.io/badge/Node.js-16%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
  <img src="https://img.shields.io/badge/License-AGPL%203.0-red?style=for-the-badge&logo=gnu&logoColor=white" alt="License" />
@@ -38,7 +38,7 @@
 |----------|------|--------|----------|--------|
 | **DeepSeek** | <img src="./public/deepseek.svg" width="24" /> | `Puppeteer + XHR` | Session capture, auto-sterilization of history | ✅ Stable |
 | **Qwen** | <img src="./public/qwen.svg" width="24" /> | `Puppeteer + Fetch` | Local sessions, account pool management | ✅ Stable |
-| **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | Multi-accounts, thinking budget, web search | ✅ Stable |
+| **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | 💀 **DEAD FOR INDIVIDUALS.** Enterprise only | ⛔ R.I.P. |
 
 ---
 
@@ -49,8 +49,8 @@ graph LR
  A[Client: SillyTavern/Cursor] -->|OpenAI API | B(Golem Gateway)
  B -->|Puppeteer| C[DeepSeek Web]
  B -->|Puppeteer| D[Qwen Web]
- B -->|OAuth2| E[Gemini Cloud API]
- C & D & E -->|Response| B -->|OpenAI Format| A
+ B -.->|💀 Dead protocol| E[Gemini Cloud API]
+ C & D -->|Response| B -->|OpenAI Format| A
 ```
 
 - **🔌 Full OpenAI API Compatibility**
@@ -125,7 +125,7 @@ node start.js
 | **API Key** | *any text* (or the token from the "System" tab) |
 
 ### 🎭 Client-Specific Notes
-- **SillyTavern**: For Gemini use `http://127.0.0.1:7777/` (without `/v1`) in *Google AI Studio* mode.
+- **SillyTavern**: ~~For Gemini use `http://127.0.0.1:7777/` (without `/v1`) in *Google AI Studio* mode.~~ Option is dead due to CLI ban.
 - **Cursor / Cline / Roo Code**: Work natively via the standard OpenAI format.
 - **Regular Expressions**: Use your client's built-in tools to filter system tags (`<think>`, web search) out of the character's memory.
 
@@ -138,7 +138,7 @@ node start.js
  ┣ 📜 index.js # Provider registry
  ┣ 📜 deepseek.js # Example: session interception
  ┣ 📜 qwen.js # Example: local sessions
- ┗ 📜 gemini.js # Example: OAuth2 + Cloud API
+ ┗ 📜 gemini.js # 💀 Dead provider, requires Enterprise license
 ```
 
 **Workflow:**

@@ -229,7 +229,6 @@ export class AccountManager {
     }
 
     async saveProviderSettings(providerId, event) {
-        // Если event из параметров отсутствует, мы не упадем с ошибкой
         const btn = event ? event.currentTarget : null;
         const originalText = btn ? btn.innerText : '';
 
@@ -238,29 +237,30 @@ export class AccountManager {
             btn.disabled = true;
         }
 
-        if (providerId === 'gemini') {
-            const maxRetries = parseInt(document.getElementById('geminiSetRetries').value) || 0;
-            const retryDelay = parseInt(document.getElementById('geminiSetDelay').value) || 2000;
+        try {
+            const res = await fetch('/api/settings');
+            const settings = await res.json();
+            if (!settings.providerSettings) settings.providerSettings = {};
 
-            try {
-                const res = await fetch('/api/settings');
-                const settings = await res.json();
-                if (!settings.providerSettings) settings.providerSettings = {};
+            if (providerId === 'gemini') {
                 if (!settings.providerSettings.gemini) settings.providerSettings.gemini = {};
-                settings.providerSettings.gemini.maxRetries = maxRetries;
-                settings.providerSettings.gemini.retryDelay = retryDelay;
+                settings.providerSettings.gemini.maxRetries = parseInt(document.getElementById('geminiSetRetries').value) || 0;
+                settings.providerSettings.gemini.retryDelay = parseInt(document.getElementById('geminiSetDelay').value) || 2000;
+            } else if (providerId === 'deepseek') {
+                if (!settings.providerSettings.deepseek) settings.providerSettings.deepseek = {};
+                settings.providerSettings.deepseek.showBrowser = document.getElementById('dsSetShowBrowser').checked;
+            }
 
-                await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
+            await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
 
-                this.modal.showToast(window.t ? window.t('toast_saved', 'Конфигурация обновлена') : 'Конфигурация обновлена');
-            } catch (e) {
-                console.error('Ошибка сохранения:', e);
-                this.modal.showToast(window.t ? window.t('settings_save_error', 'Ошибка при сохранении') : 'Ошибка при сохранении');
-            } finally {
-                if (btn) {
-                    btn.innerText = originalText;
-                    btn.disabled = false;
-                }
+            this.modal.showToast(window.t ? window.t('toast_saved', 'Настройки провайдера сохранены') : 'Настройки провайдера сохранены');
+        } catch (e) {
+            console.error('Ошибка сохранения:', e);
+            this.modal.showToast(window.t ? window.t('settings_save_error', 'Ошибка при сохранении') : 'Ошибка при сохранении', 'error');
+        } finally {
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
             }
         }
     }
@@ -273,9 +273,38 @@ export class AccountManager {
         const data = window.__PROVIDERS__[id];
         document.getElementById('genericAccountsIcon').innerHTML = data.logo;
         document.getElementById('genericAccountsTitle').innerText = 'Аккаунты: ' + data.name;
+
+        // Логика отображения настроек для конкретного провайдера
+        if (id === 'deepseek') {
+            document.getElementById('deepseekSettingsBlock').style.display = 'block';
+            document.getElementById('genericNoSettingsBlock').style.display = 'none';
+            try {
+                const res = await fetch('/api/settings');
+                const settings = await res.json();
+                const dsConfig = settings.providerSettings?.deepseek || { showBrowser: false };
+                document.getElementById('dsSetShowBrowser').checked = dsConfig.showBrowser;
+            } catch (e) { console.error(e); }
+        } else {
+            document.getElementById('deepseekSettingsBlock').style.display = 'none';
+            document.getElementById('genericNoSettingsBlock').style.display = 'block';
+        }
+
         document.getElementById('genericAccountsModal').classList.add('active');
-        this.toggleView('genericAccountsSection', 'genericEditorSection');
+        document.getElementById('genericTabsContainer').style.display = 'flex';
+        this.switchGenericTab('accounts');
         await this.fetchGenericAccounts();
+    }
+
+    switchGenericTab(tabName) {
+        const tabs = document.getElementById('genericTabsContainer').querySelectorAll('.gemini-tab-btn');
+        tabs[0].classList.toggle('active', tabName === 'accounts');
+        tabs[1].classList.toggle('active', tabName === 'settings');
+
+        if (tabName === 'accounts') {
+            this.toggleView('genericAccountsSection', ['genericSettingsSection', 'genericEditorSection']);
+        } else if (tabName === 'settings') {
+            this.toggleView('genericSettingsSection', ['genericAccountsSection', 'genericEditorSection']);
+        }
     }
 
     async fetchGenericAccounts() {
@@ -338,6 +367,39 @@ export class AccountManager {
     addGenericAccount() {
         if (this.isLocked) return;
         document.getElementById('genericAccountsModal').classList.remove('active');
+
+        // Так как авто-вход пока реализован только у DeepSeek, выбор показываем только для него
+        if (this.currentProviderId === 'deepseek') {
+            document.getElementById('authChoiceModal').classList.add('active');
+        } else {
+            // Для Qwen пока сразу открываем окно с кодом
+            this.startManualAuth();
+        }
+    }
+
+    startAutoAuth() {
+        document.getElementById('authChoiceModal').classList.remove('active');
+        this.modal.showToast(window.t('ds_toast_auth_start', 'Открываю браузер... Пожалуйста, авторизуйтесь.'), 'info');
+
+        fetch(`/api/${this.currentProviderId}/auto-auth`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    this.modal.showToast(window.t('ds_toast_auth_success', 'Аккаунт успешно добавлен в ядро.'), 'success');
+                    window.app.refreshUI();
+                    this.openGenericManager(this.currentProviderId);
+                } else {
+                    const errorMsg = data.error || window.t('ds_auth_aborted', 'Авторизация прервана');
+                    this.modal.showToast(window.t('ds_toast_auth_error', 'Ошибка: ') + errorMsg, 'error');
+                }
+            })
+            .catch(err => {
+                this.modal.showToast(window.t('ds_toast_server_error', 'Ошибка связи с сервером.'), 'error');
+            });
+    }
+
+    startManualAuth() {
+        document.getElementById('authChoiceModal').classList.remove('active');
         this.modal.openBaseAuthModal(this.currentProviderId, window.__PROVIDERS__[this.currentProviderId]);
     }
 
@@ -379,7 +441,8 @@ export class AccountManager {
         if (this.isLocked) return;
         this.genericEditingIndex = index;
         document.getElementById('genericInputName').value = this.genericDb.accounts[index].name || '';
-        this.toggleView('genericEditorSection', 'genericAccountsSection');
+        document.getElementById('genericTabsContainer').style.display = 'none';
+        this.toggleView('genericEditorSection', ['genericAccountsSection', 'genericSettingsSection']);
     }
 
     async saveGenericEdit() {
@@ -401,7 +464,8 @@ export class AccountManager {
 
     cancelGenericEdit() {
         this.genericEditingIndex = -1;
-        this.toggleView('genericAccountsSection', 'genericEditorSection');
+        document.getElementById('genericTabsContainer').style.display = 'flex';
+        this.switchGenericTab('accounts');
     }
 
     toggleView(showId, hideIds) {

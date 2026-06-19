@@ -10,7 +10,7 @@
 
 <p align="center">
  <a href="https://github.com/GrishaDeLumiere/golem-gateway/releases">
- <img src="https://img.shields.io/badge/версия-v0.2.1-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
+ <img src="https://img.shields.io/badge/версия-v0.2.2-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
  </a>
  <img src="https://img.shields.io/badge/Node.js-16%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
  <img src="https://img.shields.io/badge/License-AGPL%203.0-red?style=for-the-badge&logo=gnu&logoColor=white" alt="License" />
@@ -38,7 +38,7 @@
 |-----------|--------|-------|-------------|--------|
 | **DeepSeek** | <img src="./public/deepseek.svg" width="24" /> | `Puppeteer + XHR` | Захват сессии, авто-стерилизация истории | ✅ Стабильно |
 | **Qwen** | <img src="./public/qwen.svg" width="24" /> | `Puppeteer + Fetch` | Локальные сессии, управление пулом аккаунтов | ✅ Стабильно |
-| **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | Мульти-аккаунты, thinking budget, веб-поиск | ✅ Стабильно |
+| **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | 💀 **МЕРТВ ДЛЯ ФИЗЛИЦ.** Остался только Enterprise | ⛔ R.I.P. |
 
 ---
 
@@ -49,8 +49,8 @@ graph LR
  A[Клиент: SillyTavern/Cursor] -->|OpenAI API | B(Golem Gateway)
  B -->|Puppeteer| C[DeepSeek Web]
  B -->|Puppeteer| D[Qwen Web]
- B -->|OAuth2| E[Gemini Cloud API]
- C & D & E -->|Ответ| B -->|OpenAI Format| A
+ B -.->|💀 Мёртвый протокол| E[Gemini Cloud API]
+ C & D -->|Ответ| B -->|OpenAI Format| A
 ```
 
 - **🔌 Полная совместимость с OpenAI API**
@@ -125,7 +125,7 @@ node start.js
 | **API Key** | *любой текст* (или токен из вкладки «Система») |
 
 ### 🎭 Особенности для разных клиентов
-- **SillyTavern**: Для Gemini используйте `http://127.0.0.1:7777/` (без `/v1`) в режиме *Google AI Studio*.
+- **SillyTavern**: ~~Для Gemini используйте `http://127.0.0.1:7777/` (без `/v1`) в режиме *Google AI Studio*.~~ Опция мертва из-за бана CLI.
 - **Cursor / Cline / Roo Code**: Работают нативно через стандартный OpenAI-формат.
 - **Регулярные выражения**: Используйте встроенные инструменты вашего клиента, чтобы фильтровать служебные теги (`<think>`, веб-поиск) из памяти персонажа.
 
@@ -138,7 +138,7 @@ node start.js
  ┣ 📜 index.js # Реестр провайдеров
  ┣ 📜 deepseek.js # Пример: перехват сессии
  ┣ 📜 qwen.js # Пример: локальные сессии
- ┗ 📜 gemini.js # Пример: OAuth2 + Cloud API
+ ┗ 📜 gemini.js # 💀 Мёртвый провайдер, требует Enterprise-лицензию
 ```
 
 **Алгоритм добавления:**

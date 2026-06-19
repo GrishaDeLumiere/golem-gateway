@@ -40,10 +40,14 @@ class AuthInstaller {
                 const updated = saveSettings(req.body);
 
                 try {
-                    if (oldSettings.providers.deepseek !== updated.providers.deepseek) {
+                    const dsStatusChanged = oldSettings.providers.deepseek !== updated.providers.deepseek;
+                    const dsBrowserChanged = oldSettings.providerSettings?.deepseek?.showBrowser !== updated.providerSettings?.deepseek?.showBrowser;
+
+                    if (dsStatusChanged || dsBrowserChanged) {
                         if (updated.providers.deepseek) await deepseekProvider.initProvider(this.port);
                         else await deepseekProvider.unloadProvider();
                     }
+                    
                     if (oldSettings.providers.qwen !== updated.providers.qwen) {
                         if (updated.providers.qwen) await qwenProvider.initProvider(this.port);
                         else await qwenProvider.unloadProvider();

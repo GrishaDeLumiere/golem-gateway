@@ -46,6 +46,7 @@ class Application {
         window.addGenericAccount = () => this.accounts.addGenericAccount();
         window.cancelGenericEdit = () => this.accounts.cancelGenericEdit();
         window.saveGenericEdit = () => this.accounts.saveGenericEdit();
+        window.switchGenericTab = (tab) => this.accounts.switchGenericTab(tab);
     }
 
     async refreshUI() {

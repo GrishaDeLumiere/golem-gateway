@@ -96,8 +96,13 @@ async function initProviderCore(port = PORT) {
 
     try {
         console.log('[⚙️ DeepSeek] Создаем голема в тенях...');
+
+        const currentSettings = typeof getSettings === 'function' ? getSettings() : { providerSettings: {} };
+        const isVisible = currentSettings.providerSettings?.deepseek?.showBrowser || false;
+        // 
+
         browser = await puppeteer.launch({
-            headless: 'new', // Измените 'new' на false для отладки глазами
+            headless: isVisible ? false : 'new', 
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -291,6 +296,86 @@ function setupRoutes(app, port) {
             res.status(400).send('Ошибка данных. Не удалось извлечь куки.');
         }
     });
+
+    app.get('/api/deepseek/auto-auth', async (req, res) => {
+        try {
+            console.log('[🔑 DeepSeek] Запуск видимого браузера для авторизации нового аккаунта...');
+
+            const authBrowser = await puppeteer.launch({
+                headless: false, // Открываем браузер ВИДИМЫМ для пользователя
+                args: [
+                    '--window-size=1200,800',
+                    '--disable-blink-features=AutomationControlled'
+                ],
+                defaultViewport: null
+            });
+
+            const authPage = await authBrowser.newPage();
+            await authPage.goto('https://chat.deepseek.com/sign_in', { waitUntil: 'domcontentloaded' });
+
+            // Цикл проверки: ждем, пока пользователь войдет в аккаунт
+            const checkLogin = setInterval(async () => {
+                try {
+                    // Если пользователь сам закрыл окно до логина
+                    if (!authBrowser.isConnected()) {
+                        clearInterval(checkLogin);
+                        if (!res.headersSent) return res.status(400).json({ error: 'Окно браузера было закрыто' });
+                    }
+
+                    // Пытаемся вытащить токен из localStorage
+                    const tokenData = await authPage.evaluate(() => {
+                        const val = localStorage.getItem('userToken');
+                        if (!val) return null;
+                        try { return JSON.parse(val).value; } catch (e) { return val; }
+                    });
+
+                    // Если токен появился — значит логин успешен!
+                    if (tokenData) {
+                        clearInterval(checkLogin);
+
+                        // Парсим куки
+                        const cookiesArray = await authPage.cookies();
+                        const cookiesStr = cookiesArray.map(c => `${c.name}=${c.value}`).join('; ');
+
+                        // Сохраняем в БД профилей
+                        const db = getDb();
+                        db.accounts.push({
+                            name: `Профиль #${db.accounts.length + 1}`,
+                            token: tokenData.replace(/(^"|"$)/g, ''), // чистим кавычки
+                            cookies: cookiesStr
+                        });
+                        db.active = db.accounts.length - 1; // Делаем его активным
+                        saveDb(db);
+
+                        console.log(`[✅ DeepSeek] Аккаунт успешно перехвачен! Закрываю окно.`);
+                        await authBrowser.close();
+
+                        // Перезапускаем основного скрытого голема
+                        isBrowserBusy = false;
+                        await initProvider(currentPort);
+
+                        if (!res.headersSent) {
+                            res.json({ success: true });
+                        }
+                    }
+                } catch (e) {
+                    // Игнорируем ошибки потери контекста при навигации страницы
+                }
+            }, 2000); // Проверяем каждые 2 секунды
+
+            // Таймаут на всякий случай (например, 5 минут на ввод логина)
+            setTimeout(async () => {
+                clearInterval(checkLogin);
+                if (authBrowser.isConnected()) await authBrowser.close();
+                if (!res.headersSent) res.status(408).json({ error: 'Время ожидания авторизации вышло' });
+            }, 5 * 60 * 1000);
+
+        } catch (err) {
+            console.error('[❌ DeepSeek] Ошибка авто-входа:', err);
+            if (!res.headersSent) res.status(500).json({ error: err.message });
+        }
+    });
+
 }
 
 async function checkAndHandleCaptcha(page) {
@@ -306,26 +391,32 @@ async function checkAndHandleCaptcha(page) {
         });
 
         if (isCaptchaPresent) {
-            console.log('[⚠️ DeepSeek] Обнаружена капча AWS WAF. Попытка перезагрузки страницы...');
+            console.log('[⚠️ DeepSeek] Обнаружена капча AWS WAF. Имитируем нажатие F5...');
 
-            await page.reload({ waitUntil: 'networkidle2' });
-            await new Promise(r => setTimeout(r, 2000));
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => { }),
+                page.keyboard.press('F5')
+            ]);
 
+            await new Promise(r => setTimeout(r, 3000));
+
+            // Проверяем еще раз
             const stillHasCaptcha = await page.evaluate(() => {
                 return !!document.querySelector('#captcha-container') ||
                     (document.title && document.title.includes('Human Verification'));
             });
 
             if (stillHasCaptcha) {
-                console.log('[❌ DeepSeek] Перезагрузка страницы не помогла обойти капчу.');
+                console.log('[❌ DeepSeek] Нажатие F5 не помогло обойти капчу.');
                 return false;
             } else {
-                console.log('[✅ DeepSeek] Капча исчезла после перезагрузки страницы.');
+                console.log('[✅ DeepSeek] Капча исчезла после F5.');
                 return true;
             }
         }
     } catch (err) {
         console.error('[❌ DeepSeek] Ошибка при проверке/обработке капчи:', err.message);
+        return false;
     }
     return true;
 }

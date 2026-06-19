@@ -13,6 +13,9 @@ const DEFAULT_SETTINGS = {
         gemini: {
             maxRetries: 0,
             retryDelay: 2000
+        },
+        deepseek: {
+            showBrowser: false
         }
     },
     debugMode: false,

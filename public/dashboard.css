@@ -433,27 +433,44 @@
  }
 
  /* Toast */
- .toast {
-     position: fixed;
-     bottom: 30px;
-     right: 30px;
-     background: var(--success);
-     color: white;
-     padding: 14px 24px;
-     border-radius: 10px;
-     font-weight: 500;
-     display: flex;
-     align-items: center;
-     gap: 10px;
-     transform: translateY(150%);
-     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-     z-index: 1000;
-     box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
- }
+.toast {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    /* По умолчанию делаем зеленым, если класс не передан */
+    background: var(--success);
+    color: white;
+    padding: 14px 24px;
+    border-radius: 10px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transform: translateY(150%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s, box-shadow 0.3s;
+    z-index: 1000;
+    box-shadow: 0 10px 30px var(--success-glow);
+}
 
- .toast.show {
-     transform: translateY(0);
- }
+.toast.show {
+    transform: translateY(0);
+}
+
+/* Модификаторы цветов */
+.toast.success {
+    background: var(--success);
+    box-shadow: 0 10px 30px var(--success-glow);
+}
+
+.toast.error {
+    background: var(--error);
+    box-shadow: 0 10px 30px var(--error-glow);
+}
+
+.toast.info {
+    background: #3b82f6; /* Синий цвет */
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+}
 
  /* Footer */
  .footer {
