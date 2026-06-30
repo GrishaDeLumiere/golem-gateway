@@ -389,7 +389,12 @@ export class AccountManager {
                     window.app.refreshUI();
                     this.openGenericManager(this.currentProviderId);
                 } else {
-                    const errorMsg = data.error || window.t('ds_auth_aborted', 'Авторизация прервана');
+                    let errorMsg = data.error || window.t('ds_auth_aborted', 'Авторизация прервана');
+
+                    if (data.errorCode) {
+                        errorMsg = window.t(data.errorCode, data.error);
+                    }
+
                     this.modal.showToast(window.t('ds_toast_auth_error', 'Ошибка: ') + errorMsg, 'error');
                 }
             })

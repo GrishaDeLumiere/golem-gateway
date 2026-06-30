@@ -148,5 +148,8 @@
   "auth_choice_auto": "New Window (Automatic)",
   "auth_choice_auto_desc": "The core will open an isolated browser. You just need to log into your account.",
   "auth_choice_manual": "Your Browser (Manual)",
-  "auth_choice_manual_desc": "You will receive a script. Copy and execute it in your personal browser's console."
+  "auth_choice_manual_desc": "You will receive a script. Copy and execute it in your personal browser's console.",
+  "ds_auth_in_progress": "Authorization process is already running! Check your open browser windows.",
+  "ds_auth_closed": "Authorization window was closed by the user.",
+  "ds_auth_timeout": "Authorization wait time expired (timeout)."
 }
