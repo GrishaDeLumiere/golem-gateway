@@ -439,6 +439,7 @@ async function handleChatCompletion(req, res) {
     const currentSettings = getSettings();
     const isDebug = currentSettings.debugMode;
     const isStream = req.body.stream;
+    const sendThink = currentSettings.providerSettings?.deepseek?.sendThink ?? true;
     let requestedModel = req.body.model || currentSettings.defaultModel || "deepseek-v4-flash";
 
     if (isStream) {
@@ -454,7 +455,6 @@ async function handleChatCompletion(req, res) {
     res.on('close', () => { isClientDisconnected = true; });
 
     const checkAborted = () => {
-        if (myRequestId !== currentRequestId) return 'REROLL (Пришел новый запрос)';
         if (isClientDisconnected && !isFinished) return 'STOP (Клиент разорвал соединение)';
         return false;
     };
@@ -514,10 +514,10 @@ async function handleChatCompletion(req, res) {
                 if (data?.v?.response?.fragments) {
                     for (const frag of data.v.response.fragments) {
                         if (frag.type === 'THINK') {
-                            if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
-                            chunkDelta += frag.content || '';
+                            if (!isThinkingContext) { isThinkingContext = true; if (sendThink) chunkDelta += `<think>\n`; }
+                            if (sendThink) chunkDelta += frag.content || '';
                         } else if (frag.type === 'RESPONSE') {
-                            if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n\n</think>\n\n`; }
+                            if (isThinkingContext) { isThinkingContext = false; if (sendThink) chunkDelta += `\n\n</think>\n\n`; }
                             chunkDelta += frag.content || '';
                         }
                     }
@@ -529,10 +529,10 @@ async function handleChatCompletion(req, res) {
                         if (item.p === 'fragments' && item.o === 'APPEND' && Array.isArray(item.v)) {
                             for (const frag of item.v) {
                                 if (frag.type === 'THINK') {
-                                    if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
-                                    chunkDelta += frag.content || '';
+                                    if (!isThinkingContext) { isThinkingContext = true; if (sendThink) chunkDelta += `<think>\n`; }
+                                    if (sendThink) chunkDelta += frag.content || '';
                                 } else if (frag.type === 'RESPONSE') {
-                                    if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n\n</think>\n\n`; }
+                                    if (isThinkingContext) { isThinkingContext = false; if (sendThink) chunkDelta += `\n\n</think>\n\n`; }
                                     chunkDelta += frag.content || '';
                                 }
                             }
@@ -543,16 +543,21 @@ async function handleChatCompletion(req, res) {
                 if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
                     for (const frag of data.v) {
                         if (frag.type === 'THINK') {
-                            if (!isThinkingContext) { isThinkingContext = true; chunkDelta += `<think>\n`; }
-                            chunkDelta += frag.content || '';
+                            if (!isThinkingContext) { isThinkingContext = true; if (sendThink) chunkDelta += `<think>\n`; }
+                            if (sendThink) chunkDelta += frag.content || '';
                         } else if (frag.type === 'RESPONSE') {
-                            if (isThinkingContext) { isThinkingContext = false; chunkDelta += `\n\n</think>\n\n`; }
+                            if (isThinkingContext) { isThinkingContext = false; if (sendThink) chunkDelta += `\n\n</think>\n\n`; }
                             chunkDelta += frag.content || '';
                         }
                     }
                 }
 
-                if (typeof data?.v === 'string' && (!data?.p || data.p.endsWith('/content'))) chunkDelta += data.v;
+                if (typeof data?.v === 'string' && (!data?.p || data.p.endsWith('/content'))) {
+                    if (!isThinkingContext || sendThink) {
+                        chunkDelta += data.v;
+                    }
+                }
+
                 if (data?.p === 'response/fragments/-1/results' && Array.isArray(data?.v)) searchResults = data.v;
 
                 if (chunkDelta) {
@@ -723,7 +728,7 @@ async function handleChatCompletion(req, res) {
                 }, { timeout: 60000 });
 
                 console.log('[✅ DeepSeek] Файлы загружены, кнопка отправки АКТИВНА!');
-                await new Promise(r => setTimeout(r, 1000)); 
+                await new Promise(r => setTimeout(r, 1000));
             } catch (uploadErr) {
                 console.log(`[❌ DeepSeek] Ошибка при загрузке картинки: ${uploadErr.message}`);
             }
@@ -765,10 +770,13 @@ async function handleChatCompletion(req, res) {
         }
 
         if (isThinkingContext) {
-            const closeThink = `\n\n</think>\n\n`;
-            fullAnswer += closeThink;
-            if (isDebug) process.stdout.write(closeThink);
-            if (isStream && !res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: closeThink } }] })}\n\n`);
+            isThinkingContext = false;
+            if (sendThink) {
+                const closeThink = `\n\n</think>\n\n`;
+                fullAnswer += closeThink;
+                if (isDebug) process.stdout.write(closeThink);
+                if (isStream && !res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: closeThink } }] })}\n\n`);
+            }
         }
 
         if (searchResults.length > 0) {

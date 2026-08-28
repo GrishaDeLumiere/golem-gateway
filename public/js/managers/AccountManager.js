@@ -249,6 +249,7 @@ export class AccountManager {
             } else if (providerId === 'deepseek') {
                 if (!settings.providerSettings.deepseek) settings.providerSettings.deepseek = {};
                 settings.providerSettings.deepseek.showBrowser = document.getElementById('dsSetShowBrowser').checked;
+                settings.providerSettings.deepseek.sendThink = document.getElementById('dsSetSendThink').checked;
             }
 
             await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
@@ -281,8 +282,9 @@ export class AccountManager {
             try {
                 const res = await fetch('/api/settings');
                 const settings = await res.json();
-                const dsConfig = settings.providerSettings?.deepseek || { showBrowser: false };
+                const dsConfig = settings.providerSettings?.deepseek || { showBrowser: false, sendThink: true };
                 document.getElementById('dsSetShowBrowser').checked = dsConfig.showBrowser;
+                document.getElementById('dsSetSendThink').checked = dsConfig.sendThink ?? true;
             } catch (e) { console.error(e); }
         } else {
             document.getElementById('deepseekSettingsBlock').style.display = 'none';

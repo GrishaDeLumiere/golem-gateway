@@ -16,7 +16,7 @@
     </div>
 
     <div class="gemini-view-container">
-      
+
       <!-- РАЗДЕЛ 1: АККАУНТЫ -->
       <div id="genericAccountsSection" class="animated-view">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
@@ -36,26 +36,38 @@
         <div id="genericAccountsList" style="max-height: 380px; overflow-y: auto; padding-right: 4px;"></div>
       </div>
 
-     <!-- РАЗДЕЛ 2: НАСТРОЙКИ (НОВОЕ) -->
+      <!-- РАЗДЕЛ 2: НАСТРОЙКИ (НОВОЕ) -->
       <div id="genericSettingsSection" class="animated-view" style="display: none;">
-        
+
         <!-- Настройки для DeepSeek -->
         <div id="deepseekSettingsBlock" style="display: none;">
           <div class="gemini-form-container">
             <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 500;" data-i18n="ds_settings_title">Настройки движка (DeepSeek)</h3>
-            
+
             <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
               <div style="padding-right: 15px;">
                 <label style="color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer;" for="dsSetShowBrowser" data-i18n="ds_set_browser">Отображать браузер</label>
                 <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;" data-i18n="ds_set_browser_desc">Отключает Headless-режим. Вы будете видеть, как работает бот.</div>
               </div>
-              
+
               <label class="switch">
                 <input type="checkbox" id="dsSetShowBrowser">
                 <span class="slider"></span>
               </label>
 
             </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-top: 12px;">
+              <div style="padding-right: 15px;">
+                <label style="color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer;" for="dsSetSendThink" data-i18n="ds_set_send_think">Отправлять блок рассуждений</label>
+                <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;" data-i18n="ds_set_send_think_desc">Отправлять клиенту процесс размышлений модели (теги &lt;think&gt;). Отключите, если нужен только финальный ответ.</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="dsSetSendThink" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
           </div>
           <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
             <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="window.app.accounts.saveProviderSettings('deepseek', event)" data-i18n="gem_btn_save">Сохранить изменения</button>
@@ -93,9 +105,9 @@
       <h2 data-i18n="auth_choice_title">Способ авторизации</h2>
       <button class="close-btn" onclick="closeModal(event)">×</button>
     </div>
-    
+
     <div style="display: flex; flex-direction: column; gap: 14px;">
-      
+
       <!-- Карточка 1: Автоматически (Новое окно) -->
       <div class="gemini-acc-card" style="margin: 0; align-items: flex-start;" onclick="window.app.accounts.startAutoAuth()">
         <div class="setting-icon" style="background: rgba(97, 92, 237, 0.15); color: var(--accent); border: none; margin-top: 2px;">
