@@ -12,7 +12,8 @@ const { version: APP_VERSION } = require(path.join(__dirname, 'package.json'));
 const AuthInstaller = require('./authInstaller');
 const deepseekProvider = require('./providers/deepseek');
 const qwenProvider = require('./providers/qwen');
-const geminiProvider = require('./providers/gemini')
+const geminiProvider = require('./providers/gemini');
+const geminiApiProvider = require('./providers/gemini-interaction');
 
 const app = express();
 app.use(cors());
@@ -60,6 +61,7 @@ const settings = getSettings();
 deepseekProvider.setupRoutes(app, PORT);
 qwenProvider.setupRoutes(app, PORT);
 geminiProvider.setupRoutes(app, PORT);
+geminiApiProvider.setupRoutes(app, PORT);
 
 app.get(['/v1', '/v1/models'], (req, res) => {
     const currentSettings = getSettings();
@@ -67,6 +69,7 @@ app.get(['/v1', '/v1/models'], (req, res) => {
     if (currentSettings.providers.deepseek) models.push(...deepseekProvider.MODELS);
     if (currentSettings.providers.qwen) models.push(...qwenProvider.MODELS);
     if (currentSettings.providers.gemini) models.push(...geminiProvider.MODELS);
+    if (currentSettings.providers.gemini_api) models.push(...geminiApiProvider.MODELS);
     res.json({ object: "list", data: models });
 });
 
@@ -87,6 +90,8 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
             await deepseekProvider.handleChatCompletion(req, res);
         } else if (requestedModel.startsWith('qwen') && currentSettings.providers.qwen) {
             await qwenProvider.handleChatCompletion(req, res);
+        } else if (requestedModel.startsWith('gemini-3') && currentSettings.providers.gemini_api) {
+            await geminiApiProvider.handleChatCompletion(req, res);
         } else if ((requestedModel.startsWith('gemini') || requestedModel.startsWith('learnlm')) && currentSettings.providers.gemini) {
             await geminiProvider.handleChatCompletion(req, res);
         } else {
@@ -114,6 +119,7 @@ app.listen(PORT, async () => {
     if (settings.providers.deepseek) initPromises.push(deepseekProvider.initProvider(PORT));
     if (settings.providers.qwen) initPromises.push(qwenProvider.initProvider(PORT));
     if (settings.providers.gemini) initPromises.push(geminiProvider.initProvider(PORT));
+    if (settings.providers.gemini_api) initPromises.push(geminiApiProvider.initProvider(PORT));
 
     if (initPromises.length > 0) {
         await Promise.all(initPromises);

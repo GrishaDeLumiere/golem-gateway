@@ -22,6 +22,7 @@ let page;
 let isInitializing = false;
 let currentPort = PORT;
 let isBrowserBusy = false;
+let taskQueue = [];
 let currentRequestId = 0;
 let isAuthInProgress = false;
 const networkStreamEvents = new EventEmitter();
@@ -155,8 +156,32 @@ async function initProviderCore(port = PORT) {
             const newBrowser = await puppeteer.launch({
                 headless: isVisible ? false : 'new',
                 args: [
-                    '--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled',
-                    '--window-size=1280,800', '--disable-web-security', '--disable-features=IsolateOrigins,site-per-process'
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--window-size=1280,800',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    // 🚀 ГЛУШИМ ПРОЦЕССОР И РЕНДЕРИНГ:
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-gl-drawing-for-tests',
+                    '--mute-audio',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-breakpad',
+                    '--disable-component-update',
+                    '--disable-default-apps',
+                    '--disable-domain-reliability',
+                    '--disable-extensions',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--metrics-recording-only',
+                    '--safebrowsing-disable-auto-update'
                 ],
                 defaultViewport: null
             });
@@ -173,6 +198,21 @@ async function initProviderCore(port = PORT) {
             });
 
             page = await browser.newPage();
+
+            // 🛑 БЛОКИРУЕМ ЖРУЩИЕ CPU ШРИФТЫ, МЕДИА И АНАЛИТИКУ
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                const resourceType = req.resourceType();
+                const url = req.url();
+
+                if (['font', 'media', 'texttrack', 'eventsource', 'manifest'].includes(resourceType)) {
+                    return req.abort();
+                }
+                if (url.includes('google-analytics') || url.includes('sentry') || url.includes('sensorsdata')) {
+                    return req.abort();
+                }
+                req.continue();
+            });
 
             // 🛡️ ANTI-DETECT
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0');
@@ -459,20 +499,51 @@ async function handleChatCompletion(req, res) {
         return false;
     };
 
-    let queueWait = 0;
-    while (isBrowserBusy) {
-        const abortReason = checkAborted();
-        if (abortReason) {
-            console.log(`[⚠️ DeepSeek] Запрос [ID: ${myRequestId}] отменен в очереди. Причина: ${abortReason}`);
-            if (isStream && !res.writableEnded) res.end();
-            return;
-        }
-        await new Promise(r => setTimeout(r, 500));
-        queueWait += 500;
-        if (isStream && queueWait % 5000 === 0 && !res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ping", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {} }] })}\n\n`);
+    // 🛡️ СТРОГАЯ FIFO-ОЧЕРЕДЬ С ЗАЩИТОЙ ОТ RACE CONDITIONS
+    let pingInterval;
+    if (isStream) {
+        pingInterval = setInterval(() => {
+            if (!res.writableEnded) res.write(`data: ${JSON.stringify({ id: "ping", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {} }] })}\n\n`);
+        }, 5000);
     }
 
-    isBrowserBusy = true;
+    const proceed = await new Promise(resolve => {
+        let abortCheckInterval;
+
+        const originalResolve = (val) => {
+            if (abortCheckInterval) clearInterval(abortCheckInterval);
+            resolve(val);
+        };
+
+        const attemptStart = () => {
+            if (!isBrowserBusy) {
+                isBrowserBusy = true; // Сразу захватываем контроль
+                originalResolve(true);
+            } else {
+                taskQueue.push({ resolve: originalResolve, myRequestId });
+            }
+        };
+
+        attemptStart();
+
+        // Проверяем отмену соединения, пока висим в очереди
+        abortCheckInterval = setInterval(() => {
+            if (checkAborted()) {
+                const idx = taskQueue.findIndex(t => t.myRequestId === myRequestId);
+                if (idx !== -1) taskQueue.splice(idx, 1);
+                originalResolve(false);
+            }
+        }, 500);
+    });
+
+    if (pingInterval) clearInterval(pingInterval);
+
+    if (!proceed) {
+        console.log(`[⚠️ DeepSeek] Запрос [ID: ${myRequestId}] отменен в очереди. Причина: ${checkAborted()}`);
+        if (isStream && !res.writableEnded) res.end();
+        return;
+    }
+
     let sseBuffer = '';
     let searchResults = [];
     let isThinkingContext = false;
@@ -606,25 +677,38 @@ async function handleChatCompletion(req, res) {
 
         if (checkAborted()) throw new Error(checkAborted());
 
-        const isReady = await page.evaluate(() => {
-            if (window.location.href.endsWith('chat.deepseek.com/')) return true;
-            const elements = document.querySelectorAll('div, span');
-            for (let el of elements) {
-                if (el.textContent === 'New chat' || el.textContent === 'Новый чат') {
-                    const clickable = el.closest('div[tabindex="0"]');
-                    if (clickable) {
-                        clickable.click();
-                        return true;
+        // 🧹 НАДЁЖНЫЙ СБРОС СОСТОЯНИЯ ПЕРЕД НАЧАЛОМ (Защита от залипания UI)
+        let isClean = await page.evaluate(() => window.location.href.endsWith('chat.deepseek.com/'));
+        if (!isClean) {
+            await page.evaluate(() => {
+                const elements = document.querySelectorAll('div, span');
+                for (let el of elements) {
+                    if (el.textContent === 'New chat' || el.textContent === 'Новый чат') {
+                        const clickable = el.closest('div[tabindex="0"]');
+                        if (clickable) { clickable.click(); break; }
                     }
                 }
+            });
+            try {
+                // Строго ждем, пока UI не перейдет на корень
+                await page.waitForFunction(() => window.location.href.endsWith('chat.deepseek.com/'), { timeout: 2500 });
+            } catch (e) {
+                await page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
             }
-            return false;
-        });
-
-        if (!isReady) {
-            await page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
+            await new Promise(r => setTimeout(r, 1000));
+        } else {
+            // Даже если в корне, жмем New Chat на случай застрявших состояний
+            await page.evaluate(() => {
+                const elements = document.querySelectorAll('div, span');
+                for (let el of elements) {
+                    if (el.textContent === 'New chat' || el.textContent === 'Новый чат') {
+                        const clickable = el.closest('div[tabindex="0"]');
+                        if (clickable) { clickable.click(); break; }
+                    }
+                }
+            });
+            await new Promise(r => setTimeout(r, 500));
         }
-        await new Promise(r => setTimeout(r, 1000));
 
         if (checkAborted()) throw new Error(checkAborted());
         const captchaCleared = await checkAndHandleCaptcha(page);
@@ -833,6 +917,11 @@ async function handleChatCompletion(req, res) {
             await new Promise(r => setTimeout(r, 1000));
 
             if (sessionToKill) {
+                // ДОЖИДАЕМСЯ УХОДА С ЧАТА ПЕРЕД УДАЛЕНИЕМ API (Фиксит ошибку "This chat has been deleted")
+                try {
+                    await page.waitForFunction(() => window.location.href.endsWith('chat.deepseek.com/'), { timeout: 2000 });
+                } catch (e) { }
+
                 await page.evaluate(async (id) => {
                     const tokenRaw = localStorage.getItem('userToken');
                     if (!tokenRaw) return;
@@ -850,7 +939,13 @@ async function handleChatCompletion(req, res) {
             if (getSettings().debugMode) console.error('[❌ DeepSeek] Ошибка при удалении чата:', e.message);
         }
 
-        isBrowserBusy = false;
+        // 🛡️ ПЕРЕДАЧА ЭСТАФЕТЫ СЛЕДУЮЩЕМУ В ОЧЕРЕДИ
+        if (taskQueue.length > 0) {
+            const nextTask = taskQueue.shift();
+            nextTask.resolve(true); // Запускаем следующий. isBrowserBusy остается true!
+        } else {
+            isBrowserBusy = false; // Очередь пуста, освобождаем браузер
+        }
     }
 }
 

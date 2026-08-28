@@ -5,5 +5,6 @@ npm-debug.log
 settings.json
 gemini_credentials.json
 deepseek_accounts.json
+gemini_api_accounts.json
 qwen_accounts.json
 Thumbs.db

@@ -17,11 +17,11 @@ class Application {
 
     initGlobals() {
         window.app = this;
-        
+
         // Модалки
         window.closeModal = (e) => this.modal.closeAll(e);
         window.copySnippet = () => this.modal.copySnippet();
-        
+
         // Настройки
         window.openSettingsModal = () => this.settings.open();
         window.saveSettings = () => this.settings.save();
@@ -31,7 +31,7 @@ class Application {
         window.hideNewKeyInput = () => this.settings.hideNewKeyInput();
         window.generateApiKey = () => this.settings.generateApiKey();
         window.togglePasswordVisibility = (id, el) => this.settings.togglePasswordVisibility(id, el);
-        
+
         // Апдейтер
         window.checkUpdateModal = () => this.updater.check();
         window.openUpdaterWindow = () => this.updater.openWindow();
@@ -41,6 +41,12 @@ class Application {
         window.cancelGeminiEdit = () => this.accounts.cancelGeminiEdit();
         window.saveGeminiEdit = () => this.accounts.saveGeminiEdit();
         window.switchGeminiTab = (tab) => this.accounts.switchGeminiTab(tab);
+
+        // Gemini API (Official)
+        window.addGeminiApiAccount = () => this.accounts.addGeminiApiAccount();
+        window.cancelGeminiApiEdit = () => this.accounts.cancelGeminiApiEdit();
+        window.saveGeminiApiEdit = () => this.accounts.saveGeminiApiEdit();
+        window.switchGeminiApiTab = (tab) => this.accounts.switchGeminiApiTab(tab);
 
         // Generic
         window.addGenericAccount = () => this.accounts.addGenericAccount();
@@ -54,7 +60,7 @@ class Application {
             const res = await fetch('/api/ui-state');
             if (!res.ok) return;
             const state = await res.json();
-            
+
             window.__PROVIDERS__ = state.providersMap;
             CardRenderer.render(state.providersMap, state.settings);
 

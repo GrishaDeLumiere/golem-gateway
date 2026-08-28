@@ -15,8 +15,10 @@ module.exports = function getProviders(port) {
     const deepseekFile = path.join(__dirname, '..', 'deepseek_accounts.json');
     const qwenFile = path.join(__dirname, '..', 'qwen_accounts.json');
     const geminiFile = path.join(__dirname, '..', 'gemini_credentials.json');
+    const geminiApiFile = path.join(__dirname, '..', 'gemini_api_accounts.json');
 
     const isDeepSeekAuth = hasAccounts(deepseekFile) || !!(process.env.SESSION_TOKEN && process.env.COOKIES);
+    const isGeminiApiAuth = hasAccounts(geminiApiFile);
     const isQwenAuth = hasAccounts(qwenFile) || !!(process.env.QWEN_TOKEN && process.env.QWEN_COOKIES);
 
     let isGeminiAuth = false;
@@ -47,12 +49,22 @@ module.exports = function getProviders(port) {
         },
         {
             id: 'gemini',
-            name: 'Google Gemini',
+            name: 'Google Gemini (Cloud)',
             logo: `<img src="/gemini.svg" width="32" height="32" style="filter: drop-shadow(0 0 10px rgba(66, 133, 244, 0.4));" alt="Gemini">`,
             url: 'https://gemini.google.com',
             isAuth: isGeminiAuth,
             isOAuth: true,
             payload: `/api/gemini/auth`,
+            disabled: false
+        },
+        {
+            id: 'gemini_api',
+            name: 'Gemini (Official API)',
+            logo: `<img src="/gemini.svg" width="32" height="32" style="filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.4));" alt="Gemini API">`,
+            url: 'https://aistudio.google.com/app/apikey',
+            isAuth: isGeminiApiAuth,
+            isOAuth: false,
+            payload: ``,
             disabled: false
         }
     ];

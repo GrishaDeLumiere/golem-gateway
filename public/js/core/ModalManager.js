@@ -8,6 +8,8 @@ export class ModalManager {
         const data = window.__PROVIDERS__[id];
         if (id === 'gemini') {
             window.app.accounts.openGeminiManager();
+        } else if (id === 'gemini_api') {
+            window.app.accounts.openGeminiApiManager();
         } else if (data && data.isAuth) {
             window.app.accounts.openGenericManager(id);
         } else {

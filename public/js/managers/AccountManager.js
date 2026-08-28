@@ -3,6 +3,8 @@ export class AccountManager {
         this.modal = modalManager;
         this.geminiDb = { active: 0, accounts: [] };
         this.genericDb = { active: 0, accounts: [] };
+        this.geminiApiDb = { active: 0, accounts: [] };
+        this.geminiApiEditingIndex = -1;
         this.currentProviderId = null;
         this.geminiEditingIndex = -1;
         this.genericEditingIndex = -1;
@@ -250,6 +252,9 @@ export class AccountManager {
                 if (!settings.providerSettings.deepseek) settings.providerSettings.deepseek = {};
                 settings.providerSettings.deepseek.showBrowser = document.getElementById('dsSetShowBrowser').checked;
                 settings.providerSettings.deepseek.sendThink = document.getElementById('dsSetSendThink').checked;
+            } else if (providerId === 'gemini_api') {
+                if (!settings.providerSettings.gemini_api) settings.providerSettings.gemini_api = {};
+                settings.providerSettings.gemini_api.useInteractions = document.getElementById('geminiApiUseInteractions').checked;
             }
 
             await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
@@ -487,4 +492,149 @@ export class AccountManager {
         void showSec.offsetWidth;
         showSec.classList.add('animated-view');
     }
+
+    // ==========================================
+    // GEMINI OFFICIAL API (КЛЮЧИ И ТАБЫ)
+    // ==========================================
+
+    // Переключение табов
+    switchGeminiApiTab(tab) {
+        const tabs = document.querySelectorAll('#geminiApiTabsContainer .gemini-tab-btn');
+        tabs.forEach(t => t.classList.remove('active'));
+
+        if (tab === 'accounts') {
+            tabs[0].classList.add('active');
+            this.toggleView('geminiApiAccountsSection', ['geminiApiSettingsSection', 'geminiApiEditorSection']);
+        } else if (tab === 'settings') {
+            tabs[1].classList.add('active');
+            this.toggleView('geminiApiSettingsSection', ['geminiApiAccountsSection', 'geminiApiEditorSection']);
+        }
+    }
+
+    // Открытие окна
+    async openGeminiApiManager() {
+        document.getElementById('geminiApiModal').classList.add('active');
+        document.getElementById('geminiApiTabsContainer').style.display = 'flex'; // Показываем табы
+        this.switchGeminiApiTab('accounts');
+
+        // Загружаем настройки Голема
+        try {
+            const res = await fetch('/api/settings');
+            const settings = await res.json();
+            const useInteractions = settings.providerSettings?.gemini_api?.useInteractions || false;
+            document.getElementById('geminiApiUseInteractions').checked = useInteractions;
+        } catch (e) { }
+
+        await this.fetchGeminiApiAccounts();
+    }
+
+    async fetchGeminiApiAccounts() {
+        try {
+            const res = await fetch('/api/gemini_api/accounts');
+            this.geminiApiDb = res.ok ? await res.json() : { active: 0, accounts: [] };
+        } catch { this.geminiApiDb = { active: 0, accounts: [] }; }
+        this.renderGeminiApiAccounts();
+    }
+
+    renderGeminiApiAccounts() {
+        const listEl = document.getElementById('geminiApiAccountsList');
+        listEl.innerHTML = '';
+        if (this.geminiApiDb.accounts.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; padding: 60px 20px; border: 1px dashed #27272a; border-radius: 12px; margin-top: 12px;"><p style="color: #a1a1aa;">Пул ключей пуст.</p></div>`;
+            return;
+        }
+
+        this.geminiApiDb.accounts.forEach((acc, index) => {
+            const isActive = this.geminiApiDb.active === index;
+            const profileName = acc.name || `Ключ #${index + 1}`;
+            const tokenInfo = acc.token ? `Ключ: ${acc.token.substring(0, 10)}...${acc.token.slice(-4)}` : "Нет ключа";
+
+            listEl.innerHTML += `
+            <div class="setting-item ${isActive ? 'active-gemini-item' : ''}" style="margin-bottom: 12px; cursor: pointer;" 
+                 onclick="window.app.accounts.setActiveGeminiApi(${index})">
+                <label class="gemini-radio"><input type="radio" ${isActive ? 'checked' : ''} disabled><span class="radio-mark"></span></label>
+                <div class="setting-info" style="flex: 1; padding: 0 16px;">
+                    <h4 style="margin: 0; font-size: 15px;">${profileName}</h4>
+                    <div style="font-size: 13px; font-family: monospace; color: var(--text-muted);">${tokenInfo}</div>
+                </div>
+                <div style="display: flex; gap: 8px;" onclick="event.stopPropagation()">
+                    <button class="btn btn-icon" onclick="window.app.accounts.editGeminiApiAccount(${index})">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    </button>
+                    <button class="btn btn-icon btn-danger-flat" onclick="window.app.accounts.deleteGeminiApiAccount(${index})">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </div>`;
+        });
+    }
+
+    addGeminiApiAccount() {
+        this.geminiApiEditingIndex = -1;
+        document.getElementById('geminiApiInputName').value = '';
+        document.getElementById('geminiApiInputToken').value = '';
+
+        // Прячем табы при редактировании
+        document.getElementById('geminiApiTabsContainer').style.display = 'none';
+        this.toggleView('geminiApiEditorSection', ['geminiApiAccountsSection', 'geminiApiSettingsSection']);
+    }
+
+    editGeminiApiAccount(index) {
+        this.geminiApiEditingIndex = index;
+        document.getElementById('geminiApiInputName').value = this.geminiApiDb.accounts[index].name || '';
+        document.getElementById('geminiApiInputToken').value = this.geminiApiDb.accounts[index].token || '';
+
+        // Прячем табы при редактировании
+        document.getElementById('geminiApiTabsContainer').style.display = 'none';
+        this.toggleView('geminiApiEditorSection', ['geminiApiAccountsSection', 'geminiApiSettingsSection']);
+    }
+
+    async saveGeminiApiEdit() {
+        const newName = document.getElementById('geminiApiInputName').value.trim();
+        const newToken = document.getElementById('geminiApiInputToken').value.trim();
+
+        if (!newName || !newToken) {
+            this.modal.showToast("Имя и Ключ обязательны", "error");
+            return;
+        }
+
+        if (this.geminiApiEditingIndex === -1) {
+            this.geminiApiDb.accounts.push({ name: newName, token: newToken, createdAt: Date.now() });
+            this.geminiApiDb.active = this.geminiApiDb.accounts.length - 1;
+        } else {
+            this.geminiApiDb.accounts[this.geminiApiEditingIndex].name = newName;
+            this.geminiApiDb.accounts[this.geminiApiEditingIndex].token = newToken;
+        }
+
+        await fetch('/api/gemini_api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.geminiApiDb) });
+        this.cancelGeminiApiEdit();
+        this.renderGeminiApiAccounts();
+        window.app.refreshUI();
+        this.modal.showToast('Ключ сохранен');
+    }
+
+    cancelGeminiApiEdit() {
+        this.geminiApiEditingIndex = -1;
+        document.getElementById('geminiApiTabsContainer').style.display = 'flex'; // Возвращаем табы
+        this.switchGeminiApiTab('accounts');
+    }
+
+    async setActiveGeminiApi(index) {
+        if (this.geminiApiDb.active === index) return;
+        this.geminiApiDb.active = index;
+        await fetch('/api/gemini_api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.geminiApiDb) });
+        this.renderGeminiApiAccounts();
+        window.app.refreshUI();
+        this.modal.showToast('Активный ключ изменен');
+    }
+
+    async deleteGeminiApiAccount(index) {
+        if (!confirm("Удалить этот ключ безвозвратно?")) return;
+        this.geminiApiDb.accounts.splice(index, 1);
+        if (this.geminiApiDb.active >= this.geminiApiDb.accounts.length) this.geminiApiDb.active = 0;
+        await fetch('/api/gemini_api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.geminiApiDb) });
+        this.renderGeminiApiAccounts();
+        window.app.refreshUI();
+    }
+
 }

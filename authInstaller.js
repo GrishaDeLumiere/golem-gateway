@@ -47,7 +47,7 @@ class AuthInstaller {
                         if (updated.providers.deepseek) await deepseekProvider.initProvider(this.port);
                         else await deepseekProvider.unloadProvider();
                     }
-                    
+
                     if (oldSettings.providers.qwen !== updated.providers.qwen) {
                         if (updated.providers.qwen) await qwenProvider.initProvider(this.port);
                         else await qwenProvider.unloadProvider();
@@ -55,6 +55,10 @@ class AuthInstaller {
                     if (oldSettings.providers.gemini !== updated.providers.gemini) {
                         if (updated.providers.gemini) await geminiProvider.initProvider(this.port);
                         else await geminiProvider.unloadProvider();
+                    }
+                    if (oldSettings.providers.gemini_api !== updated.providers.gemini_api) {
+                        if (updated.providers.gemini_api) await require('./providers/gemini-interaction').initProvider(this.port);
+                        else await require('./providers/gemini-interaction').unloadProvider();
                     }
                 } catch (err) {
                     console.error('[❌ Дашборд] Ошибка при переключении провайдеров:', err);
@@ -94,6 +98,7 @@ class AuthInstaller {
             html = html.replace('<!-- INCLUDE_MODAL_SETTINGS -->', loadPartial('modals/settings.html'));
             html = html.replace('<!-- INCLUDE_MODAL_GEMINI -->', loadPartial('modals/gemini.html'));
             html = html.replace('<!-- INCLUDE_MODAL_GENERIC -->', loadPartial('modals/generic.html'));
+            html = html.replace('<!-- INCLUDE_MODAL_GEMINI_API -->', loadPartial('modals/gemini-api.html'));
             html = html.replace('<!-- INCLUDE_MODAL_UPDATE -->', loadPartial('modals/update.html'));
 
             // 4. Подставляем переменные

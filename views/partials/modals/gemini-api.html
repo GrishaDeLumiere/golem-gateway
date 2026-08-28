@@ -1,0 +1,112 @@
+<!-- Модальное окно пула ключей Gemini API -->
+<div class="modal-overlay" id="geminiApiModal" onclick="closeModal(event)">
+  <div class="modal">
+    <!-- Шапка без бордера для табов -->
+    <div class="modal-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+      <h2>
+        <img src="/gemini.svg" width="28" height="28" style="filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.4)); margin-right: 12px;" alt="Gemini API">
+        <span>Официальный Gemini API</span>
+      </h2>
+      <button class="close-btn" onclick="closeModal(event)">×</button>
+    </div>
+
+    <!-- Навигация (AAA-табы) -->
+    <div class="gemini-tabs" id="geminiApiTabsContainer">
+      <button class="gemini-tab-btn active" onclick="switchGeminiApiTab('accounts')">Пул ключей</button>
+      <button class="gemini-tab-btn" onclick="switchGeminiApiTab('settings')">Настройки</button>
+    </div>
+
+    <div class="gemini-view-container">
+
+      <!-- ========================================= -->
+      <!-- ЭКРАН 1: СПИСОК АККАУНТОВ (КЛЮЧЕЙ)        -->
+      <!-- ========================================= -->
+      <div id="geminiApiAccountsSection" class="animated-view">
+
+        <!-- Красивый баннер-ссылка на ключи -->
+        <div class="guide-banner" style="margin-bottom: 20px;">
+          <div class="guide-banner-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+            </svg>
+          </div>
+          <div class="guide-banner-text">
+            <strong style="color: #fff; font-size: 15px; display: block; margin-bottom: 6px;">Генерация API Ключей</strong>
+            <span style="display: block; margin-bottom: 4px;">Бесплатные ключи <code>AIzaSy...</code> выдаются в панели разработчика Google:</span>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: #60a5fa; text-decoration: none; border-bottom: 1px dashed #60a5fa; font-weight: 500; transition: color 0.2s;">Перейти в Google AI Studio →</a>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div style="max-width: 65%;">
+            <p style="color: var(--text-muted); margin: 0; font-size: 14px; line-height: 1.5;">
+              Добавьте свои ключи в пул. Шлюз будет автоматически использовать выбранный ключ.
+            </p>
+          </div>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 16px; font-size: 14px;" onclick="addGeminiApiAccount()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Добавить ключ</span>
+          </button>
+        </div>
+        <div id="geminiApiAccountsList" style="max-height: 250px; overflow-y: auto; padding-right: 4px;"></div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- ЭКРАН 2: ГЛОБАЛЬНЫЕ НАСТРОЙКИ             -->
+      <!-- ========================================= -->
+      <div id="geminiApiSettingsSection" class="animated-view" style="display: none;">
+        <div class="gemini-form-container">
+          <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 500;">Параметры протокола</h3>
+
+          <!-- Кастомный свитч Interactions API -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div style="max-width: 80%;">
+              <label style="font-size: 14px; font-weight: 500; color: var(--text); display: block; margin-bottom: 6px; cursor: pointer;" for="geminiApiUseInteractions">
+                Использовать Interactions API
+              </label>
+              <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5;">
+                Переключает маршрут на <code>/v1beta/interactions</code> (обязательно для Gemini 3.7). <br>Если выключено — использует классический <code>generateContent</code> (для 3.0 / 3.1 / 1.5).
+              </p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="geminiApiUseInteractions">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Заготовка под будущие 1000 настроек -->
+
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="window.app.accounts.saveProviderSettings('gemini_api')">Сохранить настройки</button>
+        </div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- ЭКРАН 3: РЕДАКТОР КЛЮЧА                   -->
+      <!-- ========================================= -->
+      <div id="geminiApiEditorSection" class="animated-view" style="display: none;">
+        <div class="gemini-form-container">
+          <div class="gemini-form-group">
+            <label for="geminiApiInputName">Название профиля (для себя)</label>
+            <input type="text" id="geminiApiInputName" placeholder="Например: Основной аккаунт" autocomplete="off" spellcheck="false" style="font-family: inherit;">
+          </div>
+          <div class="gemini-form-group" style="margin-top: 12px;">
+            <label for="geminiApiInputToken">Google API Key <span style="color: var(--error)">*</span></label>
+            <input type="password" id="geminiApiInputToken" placeholder="AIzaSy..." autocomplete="off" spellcheck="false" style="font-family: monospace;">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-flat" style="width: auto; padding: 10px 20px;" onclick="cancelGeminiApiEdit()">Назад</button>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="saveGeminiApiEdit()">Сохранить ключ</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

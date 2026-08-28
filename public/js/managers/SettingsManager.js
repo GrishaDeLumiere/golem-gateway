@@ -13,6 +13,7 @@ export class SettingsManager {
             document.getElementById('set-qwen').checked = settings.providers.qwen;
             document.getElementById('set-debug').checked = settings.debugMode;
             document.getElementById('set-gemini').checked = settings.providers.gemini;
+            document.getElementById('set-gemini-api').checked = settings.providers.gemini_api || false;
             document.getElementById('set-default-model').value = settings.defaultModel || 'deepseek-v4-flash';
             document.getElementById('set-api-key').value = settings.masterApiKey || '';
             document.getElementById('set-language').value = settings.language || 'ru_RU';
@@ -56,7 +57,8 @@ export class SettingsManager {
             providers: {
                 deepseek: document.getElementById('set-deepseek').checked,
                 qwen: document.getElementById('set-qwen').checked,
-                gemini: document.getElementById('set-gemini').checked
+                gemini: document.getElementById('set-gemini').checked,
+                gemini_api: document.getElementById('set-gemini-api').checked
             },
             debugMode: document.getElementById('set-debug').checked,
             defaultModel: document.getElementById('set-default-model').value,
