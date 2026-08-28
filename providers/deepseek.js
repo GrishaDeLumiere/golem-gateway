@@ -4,6 +4,9 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const https = require('https');
+const http = require('http');
 const { exec } = require('child_process');
 const { PORT } = require('../config');
 const { getSettings } = require('../settings');
@@ -32,7 +35,12 @@ const MODELS = [
     { id: "deepseek-v4-pro", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-pro-search", object: "model", owned_by: "deepseek-system" },
     { id: "deepseek-v4-pro-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-pro-search-think", object: "model", owned_by: "deepseek-system" }
+    { id: "deepseek-v4-pro-search-think", object: "model", owned_by: "deepseek-system" },
+    // 👁️ VISION МОДЕЛИ
+    { id: "deepseek-v4-vision", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-vision-think", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-vision-search", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-v4-vision-search-think", object: "model", owned_by: "deepseek-system" }
 ];
 
 const DB_FILE = path.join(__dirname, '../deepseek_accounts.json');
@@ -62,9 +70,48 @@ async function safeCloseBrowser(br) {
         br._isIntentionalClose = true;
         const proc = br.process();
         const pid = proc ? proc.pid : null;
-        await Promise.race([ br.close().catch(() => {}), new Promise(r => setTimeout(r, 2000)) ]);
-        if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (e) {} }
-    } catch (err) {}
+        await Promise.race([br.close().catch(() => { }), new Promise(r => setTimeout(r, 2000))]);
+        if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (e) { } }
+    } catch (err) { }
+}
+
+async function saveMediaToTempFile(dataOrUrl) {
+    try {
+        if (!dataOrUrl || typeof dataOrUrl !== 'string') return null;
+
+        // Надежный парсинг Base64 (работает с любыми форматами, которые шлет OpenAI/SillyTavern)
+        if (dataOrUrl.includes('base64,')) {
+            const base64Data = dataOrUrl.split('base64,')[1];
+            let ext = 'jpg';
+            if (dataOrUrl.includes('image/png')) ext = 'png';
+            else if (dataOrUrl.includes('image/webp')) ext = 'webp';
+            else if (dataOrUrl.includes('image/gif')) ext = 'gif';
+
+            const buffer = Buffer.from(base64Data, 'base64');
+            const tempFilePath = path.join(os.tmpdir(), `ds_upload_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`);
+            fs.writeFileSync(tempFilePath, buffer);
+            return tempFilePath;
+        }
+
+        // Обработка прямых ссылок
+        if (dataOrUrl.startsWith('http://') || dataOrUrl.startsWith('https://')) {
+            return new Promise((resolve) => {
+                const client = dataOrUrl.startsWith('https://') ? https : http;
+                client.get(dataOrUrl, (res) => {
+                    if (res.statusCode !== 200) return resolve(null);
+                    const contentType = res.headers['content-type'] || 'image/jpeg';
+                    const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+                    const tempFilePath = path.join(os.tmpdir(), `ds_upload_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`);
+                    const fileStream = fs.createWriteStream(tempFilePath);
+                    res.pipe(fileStream);
+                    fileStream.on('finish', () => resolve(tempFilePath));
+                }).on('error', () => resolve(null));
+            });
+        }
+    } catch (e) {
+        console.error('[❌ DeepSeek] Ошибка сохранения файла на диск:', e.message);
+    }
+    return null;
 }
 
 // ==========================================
@@ -106,7 +153,7 @@ async function initProviderCore(port = PORT) {
             const isVisible = currentSettings.providerSettings?.deepseek?.showBrowser || false;
 
             const newBrowser = await puppeteer.launch({
-                headless: isVisible ? false : 'new', 
+                headless: isVisible ? false : 'new',
                 args: [
                     '--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled',
                     '--window-size=1280,800', '--disable-web-security', '--disable-features=IsolateOrigins,site-per-process'
@@ -126,7 +173,7 @@ async function initProviderCore(port = PORT) {
             });
 
             page = await browser.newPage();
-            
+
             // 🛡️ ANTI-DETECT
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0');
             await page.setExtraHTTPHeaders({
@@ -302,7 +349,7 @@ function setupRoutes(app, port) {
             if (!res.headersSent) return res.status(429).json({ errorCode: 'ds_auth_in_progress', error: 'Процесс авторизации уже запущен!' });
             return;
         }
-        
+
         isAuthInProgress = true;
 
         try {
@@ -313,16 +360,16 @@ function setupRoutes(app, port) {
             await authPage.setExtraHTTPHeaders({ 'sec-ch-ua': '"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"', 'sec-ch-ua-platform': '"Windows"' });
             await authPage.goto('https://chat.deepseek.com/sign_in', { waitUntil: 'domcontentloaded' });
 
-            let isAuthSuccess = false; 
+            let isAuthSuccess = false;
             let isChecking = false;
 
             const checkLogin = setInterval(async () => {
-                if (isAuthSuccess || isChecking) return; 
+                if (isAuthSuccess || isChecking) return;
                 isChecking = true;
                 try {
                     if (!authBrowser.isConnected()) {
                         clearInterval(checkLogin);
-                        isAuthInProgress = false; 
+                        isAuthInProgress = false;
                         if (!res.headersSent) return res.status(400).json({ errorCode: 'ds_auth_closed', error: 'Окно закрыто' });
                         return;
                     }
@@ -332,35 +379,35 @@ function setupRoutes(app, port) {
                         try { return JSON.parse(val).value; } catch (e) { return val; }
                     });
                     if (tokenData && !isAuthSuccess) {
-                        isAuthSuccess = true; 
+                        isAuthSuccess = true;
                         clearInterval(checkLogin);
                         const cookiesArray = await authPage.cookies();
                         const cookiesStr = cookiesArray.map(c => `${c.name}=${c.value}`).join('; ');
                         const db = getDb();
                         db.accounts.push({ name: `Профиль #${db.accounts.length + 1}`, token: tokenData.replace(/(^"|"$)/g, ''), cookies: cookiesStr });
-                        db.active = db.accounts.length - 1; 
+                        db.active = db.accounts.length - 1;
                         saveDb(db);
                         console.log(`[✅ DeepSeek] Аккаунт успешно перехвачен! Закрываю окно.`);
                         await safeCloseBrowser(authBrowser);
-                        isAuthInProgress = false; 
+                        isAuthInProgress = false;
                         isBrowserBusy = false;
                         await initProvider(currentPort);
                         if (!res.headersSent) res.json({ success: true });
                     }
-                } catch (e) {} finally { isChecking = false; }
+                } catch (e) { } finally { isChecking = false; }
             }, 2000);
 
             setTimeout(async () => {
                 if (!isAuthSuccess) {
                     clearInterval(checkLogin);
                     await safeCloseBrowser(authBrowser);
-                    isAuthInProgress = false; 
+                    isAuthInProgress = false;
                     if (!res.headersSent) res.status(408).json({ errorCode: 'ds_auth_timeout', error: 'Таймаут авторизации' });
                 }
             }, 5 * 60 * 1000);
-            
+
         } catch (err) {
-            isAuthInProgress = false; 
+            isAuthInProgress = false;
             if (!res.headersSent) res.status(500).json({ error: err.message });
         }
     });
@@ -376,7 +423,7 @@ async function checkAndHandleCaptcha(page) {
         });
         if (isCaptchaPresent) {
             console.log('[⚠️ DeepSeek] Обнаружена капча AWS WAF. Имитируем нажатие F5...');
-            await Promise.all([ page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => { }), page.keyboard.press('F5') ]);
+            await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => { }), page.keyboard.press('F5')]);
             await new Promise(r => setTimeout(r, 3000));
             return !(await page.evaluate(() => { return !!document.querySelector('#captcha-container') || (document.title && document.title.includes('Human Verification')); }));
         }
@@ -384,9 +431,6 @@ async function checkAndHandleCaptcha(page) {
     return true;
 }
 
-// ==========================================
-// ОСНОВНАЯ ГЕНЕРАЦИЯ LLM (ОРИГИНАЛЬНАЯ ЛОГИКА)
-// ==========================================
 async function handleChatCompletion(req, res) {
     if (isInitializing || !page || page.isClosed()) {
         return res.status(503).json({ error: { message: "Провайдер DeepSeek инициализируется.", type: "server_loading" } });
@@ -433,8 +477,9 @@ async function handleChatCompletion(req, res) {
     let searchResults = [];
     let isThinkingContext = false;
     let fullAnswer = '';
+    const tempUploadedFiles = [];
 
-    // 💉 ОРИГИНАЛЬНЫЙ ПАРСЕР ЧАНКОВ (НЕ ТРОГАТЬ!!!)
+    // 💉 ОРИГИНАЛЬНЫЙ ПАРСЕР ЧАНКОВ (НЕ ТРОГАТЬ)
     const handleChunk = (rawText) => {
         if (checkAborted()) return;
         sseBuffer += rawText;
@@ -460,7 +505,7 @@ async function handleChatCompletion(req, res) {
                         errStr = j.message || j.error?.message || errStr;
                     } catch (e) { }
                     chunkDelta += `\n❌ [СЕРВЕР DEEPSEEK УПАЛ]: ${errStr}\nСервера сейчас под шквалом запросов.`;
-                    isFinished = true; 
+                    isFinished = true;
                 }
 
                 if (data?.p === 'response/status' && data?.v === 'FINISHED') isFinished = true;
@@ -512,7 +557,7 @@ async function handleChatCompletion(req, res) {
 
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
-                    if (isDebug) process.stdout.write(chunkDelta); 
+                    if (isDebug) process.stdout.write(chunkDelta);
                     if (isStream && !res.writableEnded) {
                         res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: chunkDelta } }] })}\n\n`);
                     }
@@ -525,24 +570,56 @@ async function handleChatCompletion(req, res) {
 
     try {
         const messages = req.body.messages || [];
-        const promptText = messages.map(m => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n---\n\n');
+
+        // 📷 ИЗВЛЕЧЕНИЕ ТЕКСТА И ИЗОБРАЖЕНИЙ
+        let promptText = '';
+        for (const m of messages) {
+            const role = (m.role || 'user').toUpperCase();
+            if (typeof m.content === 'string') {
+                promptText += `${role}:\n${m.content}\n\n---\n\n`;
+            } else if (Array.isArray(m.content)) {
+                const textParts = [];
+                for (const part of m.content) {
+                    if (part.type === 'text' && part.text) {
+                        textParts.push(part.text);
+                    } else if (part.type === 'image_url' && part.image_url) {
+                        // Достаем url независимо от того, как клиент его передал
+                        const imgUrl = typeof part.image_url === 'string' ? part.image_url : (part.image_url.url || '');
+                        const tempPath = await saveMediaToTempFile(imgUrl);
+                        if (tempPath) tempUploadedFiles.push(tempPath);
+                    }
+                }
+                if (textParts.length > 0) {
+                    promptText += `${role}:\n${textParts.join('\n')}\n\n---\n\n`;
+                }
+            }
+        }
+        promptText = promptText.trim();
 
         console.log(`[🚀 DeepSeek] Старт генерации [ID: ${myRequestId}] -> Модель: ${requestedModel}`);
-        if (isDebug) console.log(`[🐛 DEBUG] Промпт готовится к передаче...`);
+        console.log(`[🐛 DEBUG] Промпт готовится. Найдено файлов для загрузки: ${tempUploadedFiles.length}`);
 
         if (checkAborted()) throw new Error(checkAborted());
 
-        const currentUrl = page.url();
-        if (!currentUrl.endsWith('chat.deepseek.com/')) {
+        const isReady = await page.evaluate(() => {
+            if (window.location.href.endsWith('chat.deepseek.com/')) return true;
+            const elements = document.querySelectorAll('div, span');
+            for (let el of elements) {
+                if (el.textContent === 'New chat' || el.textContent === 'Новый чат') {
+                    const clickable = el.closest('div[tabindex="0"]');
+                    if (clickable) {
+                        clickable.click();
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
+
+        if (!isReady) {
             await page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
-            await new Promise(r => setTimeout(r, 1000));
-        } else {
-            await page.evaluate(() => {
-                const btn = Array.from(document.querySelectorAll('span, div')).find(s => s.textContent === 'Новый чат' || s.textContent === 'New chat');
-                if (btn && btn.closest('div[tabindex="0"]')) btn.closest('div[tabindex="0"]').click();
-            });
-            await new Promise(r => setTimeout(r, 1000));
         }
+        await new Promise(r => setTimeout(r, 1000));
 
         if (checkAborted()) throw new Error(checkAborted());
         const captchaCleared = await checkAndHandleCaptcha(page);
@@ -550,31 +627,48 @@ async function handleChatCompletion(req, res) {
 
         const wantsSearch = requestedModel.includes('search');
         const wantsThink = requestedModel.includes('think');
-        const wantsExpert = requestedModel.includes('expert') || requestedModel.includes('pro');
+        const wantsVision = requestedModel.includes('vision') || tempUploadedFiles.length > 0;
+        const wantsExpert = (requestedModel.includes('expert') || requestedModel.includes('pro')) && !wantsVision;
 
-        await page.evaluate((search, think, expert) => {
-            const targetModelType = expert ? "expert" : "default";
+        // ПЕРЕКЛЮЧЕНИЕ МОДЕЛЕЙ И КНОПОК
+        await page.evaluate((search, think, expert, vision) => {
+            let targetModelType = "default";
+            if (vision) targetModelType = "vision";
+            else if (expert) targetModelType = "expert";
+
             const modelRadio = document.querySelector(`div[data-model-type="${targetModelType}"]`);
-            if (modelRadio && modelRadio.getAttribute('aria-checked') !== 'true') modelRadio.click();
+            if (modelRadio && modelRadio.getAttribute('aria-checked') !== 'true') {
+                modelRadio.click();
+            }
 
             const toggleButtons = Array.from(document.querySelectorAll('.ds-toggle-button, [role="switch"]'));
             const searchBtn = toggleButtons.find(btn => btn.textContent && (btn.textContent.includes('Умный поиск') || btn.textContent.includes('Search')));
             if (searchBtn) {
-                const isSelected = searchBtn.classList.contains('ds-toggle-button--selected') || searchBtn.getAttribute('aria-checked') === 'true';
+                const isSelected = searchBtn.classList.contains('ds-toggle-button--selected') || searchBtn.getAttribute('aria-pressed') === 'true' || searchBtn.getAttribute('aria-checked') === 'true';
                 if (search !== isSelected) searchBtn.click();
             }
             const thinkBtn = toggleButtons.find(btn => btn.textContent && (btn.textContent.includes('Глубокое мышление') || btn.textContent.includes('DeepThink')));
             if (thinkBtn) {
-                const isSelected = thinkBtn.classList.contains('ds-toggle-button--selected') || thinkBtn.getAttribute('aria-checked') === 'true';
+                const isSelected = thinkBtn.classList.contains('ds-toggle-button--selected') || thinkBtn.getAttribute('aria-pressed') === 'true' || thinkBtn.getAttribute('aria-checked') === 'true';
                 if (think !== isSelected) thinkBtn.click();
             }
-        }, wantsSearch, wantsThink, wantsExpert);
+        }, wantsSearch, wantsThink, wantsExpert, wantsVision);
 
-        await new Promise(r => setTimeout(r, 500));
+        // ❗️ ВАЖНО: Даем React время перерисовать DOM после смены режима
+        await new Promise(r => setTimeout(r, 2000));
         if (checkAborted()) throw new Error(checkAborted());
+
+        // 📝 ШАГ 1: ВСТАВЛЯЕМ ТЕКСТ ДО ЗАГРУЗКИ КАРТИНКИ!
+        // Это решает баг: во время загрузки React жестко блокирует поле ввода.
+        // Поэтому мы вводим текст ДО того, как начнется загрузка файла.
         await page.waitForSelector('textarea');
 
-        // 💉 ОРИГИНАЛЬНАЯ ВСТАВКА ТЕКСТА (НЕ ТРОГАТЬ!!!)
+        // Если текст пустой (отправили только картинку), задаем дефолтный, 
+        // иначе кнопка отправки может не разблокироваться.
+        if (!promptText || promptText.trim() === '') {
+            promptText = 'Опиши это изображение подробно.';
+        }
+
         const inserted = await page.evaluate(async (text) => {
             const textarea = document.querySelector('textarea');
             if (!textarea) return false;
@@ -585,12 +679,12 @@ async function handleChatCompletion(req, res) {
                 textarea.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
                 textarea.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
                 textarea.click();
-                return textarea.value.length > 0; 
+                return textarea.value.length > 0;
             } catch (e) { return false; }
         }, promptText);
 
         if (!inserted) {
-            console.log('[⚠️ DeepSeek] Первый метод не сработал, пробую Clipboard API...');
+            console.log('[⚠️ DeepSeek] Первый метод вставки не сработал, пробую Clipboard API...');
             const context = browser.defaultBrowserContext();
             await context.overridePermissions('https://chat.deepseek.com', ['clipboard-read', 'clipboard-write']);
             await page.evaluate(async (text) => {
@@ -608,13 +702,43 @@ async function handleChatCompletion(req, res) {
             return ta ? ta.value.length : 0;
         });
 
-        if (textInField < 10) throw new Error(`ТЕКСТ НЕ ВСТАВИЛСЯ! В поле ${textInField} символов из ${promptText.length}`);
-        
-        console.log(`[✅ DeepSeek] Вставлено ${textInField} символов`);
+        if (textInField < 1) {
+            throw new Error(`ТЕКСТ НЕ ВСТАВИЛСЯ! В поле ${textInField} символов из ${promptText.length}`);
+        }
+        console.log(`[✅ DeepSeek] Вставлено ${textInField} символов текста.`);
         await new Promise(r => setTimeout(r, 500));
+
+        // 📎 ШАГ 2: ЗАГРУЖАЕМ ФАЙЛЫ
+        if (tempUploadedFiles.length > 0) {
+            console.log(`[📎 DeepSeek] Инициирую загрузку ${tempUploadedFiles.length} файла(ов)...`);
+            try {
+                const fileInput = await page.waitForSelector('input[type="file"]', { timeout: 5000 });
+                await fileInput.uploadFile(...tempUploadedFiles);
+                console.log(`[📎 DeepSeek] Файлы переданы браузеру. Ждем окончания обработки на серверах...`);
+
+                await page.waitForFunction(() => {
+                    const sendBtn = document.querySelector('.ds-button--circle.ds-button--primary');
+                    if (!sendBtn) return false;
+                    return !sendBtn.classList.contains('ds-button--disabled');
+                }, { timeout: 60000 });
+
+                console.log('[✅ DeepSeek] Файлы загружены, кнопка отправки АКТИВНА!');
+                await new Promise(r => setTimeout(r, 1000)); 
+            } catch (uploadErr) {
+                console.log(`[❌ DeepSeek] Ошибка при загрузке картинки: ${uploadErr.message}`);
+            }
+        }
 
         networkStreamEvents.on('chunk', handleChunk);
         networkStreamEvents.on('end', onEnd);
+
+        await page.evaluate(() => {
+            const sendBtn = document.querySelector('.ds-button--circle.ds-button--primary');
+            if (sendBtn && !sendBtn.classList.contains('ds-button--disabled')) {
+                sendBtn.click();
+            }
+        });
+
         await page.keyboard.press('Enter');
 
         let failSafe = 0;
@@ -625,7 +749,7 @@ async function handleChatCompletion(req, res) {
             if (isStream && !res.writableEnded && failSafe % 10 === 0) res.write(`data: ${JSON.stringify({ id: "ping", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {} }] })}\n\n`);
             if (failSafe > 1200) {
                 if (isDebug) console.log('[🐛 DEBUG] Таймаут генерации.');
-                break; 
+                break;
             }
         }
 
@@ -675,29 +799,49 @@ async function handleChatCompletion(req, res) {
         isFinished = true;
         networkStreamEvents.off('chunk', handleChunk);
         networkStreamEvents.off('end', onEnd);
-        
-        // 💉 ОРИГИНАЛЬНОЕ УДАЛЕНИЕ ЧАТОВ (НЕ ТРОГАТЬ!!!)
+
+        // Очистка созданных временных файлов картинок
+        for (const f of tempUploadedFiles) {
+            try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) { }
+        }
+
+        // 💉 ОЧИСТКА ЧАТОВ
         try {
-            await new Promise(r => setTimeout(r, 1500)); // ЖДЕМ ПОКА ОБНОВИТСЯ URL!
-            const match = page.url().match(/chat\/s\/([a-z0-9-]+)/i);
-            if (match && match[1]) {
-                const sessionToKill = match[1];
+            await new Promise(r => setTimeout(r, 1500));
+            const currentUrl = page.url();
+            const match = currentUrl.match(/chat\/s\/([a-z0-9-]+)/i);
+            const sessionToKill = match ? match[1] : null;
+
+            await page.evaluate(() => {
+                const elements = document.querySelectorAll('div, span');
+                for (let el of elements) {
+                    if (el.textContent === 'New chat' || el.textContent === 'Новый чат') {
+                        const clickable = el.closest('div[tabindex="0"]');
+                        if (clickable) { clickable.click(); break; }
+                    }
+                }
+            });
+
+            await new Promise(r => setTimeout(r, 1000));
+
+            if (sessionToKill) {
                 await page.evaluate(async (id) => {
                     const tokenRaw = localStorage.getItem('userToken');
                     if (!tokenRaw) return;
-                    await fetch('/api/v0/chat_session/delete', { 
-                        method: 'POST', 
-                        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${JSON.parse(tokenRaw).value}` }, 
-                        body: JSON.stringify({ chat_session_id: id }) 
-                    });
+                    try {
+                        await fetch('/api/v0/chat_session/delete', {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json', 'authorization': `Bearer ${JSON.parse(tokenRaw).value}` },
+                            body: JSON.stringify({ chat_session_id: id })
+                        });
+                    } catch (e) { }
                 }, sessionToKill);
                 if (getSettings().debugMode) console.log(`[🧹 DeepSeek] Облачный чат ${sessionToKill} очищен.`);
             }
-            await page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
         } catch (e) {
             if (getSettings().debugMode) console.error('[❌ DeepSeek] Ошибка при удалении чата:', e.message);
         }
-        
+
         isBrowserBusy = false;
     }
 }
