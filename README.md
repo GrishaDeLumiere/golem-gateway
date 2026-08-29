@@ -10,7 +10,7 @@
 
 <p align="center">
  <a href="https://github.com/GrishaDeLumiere/golem-gateway/releases">
- <img src="https://img.shields.io/badge/версия-v0.2.2-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
+ <img src="https://img.shields.io/badge/версия-v0.3.0-615CED?style=for-the-badge&logo=semver&logoColor=white" alt="Version" />
  </a>
  <img src="https://img.shields.io/badge/Node.js-16%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
  <img src="https://img.shields.io/badge/License-AGPL%203.0-red?style=for-the-badge&logo=gnu&logoColor=white" alt="License" />
@@ -19,16 +19,35 @@
 
 <p align="center">
  <strong>Модульный stateless-маршрутизатор для больших языковых моделей</strong><br>
- <em>Невидимый мост между веб-интерфейсами ИИ и стандартными API-клиентами</em>
+ <em>Единый шлюз между веб-интерфейсами, официальными API и сторонними клиентами</em>
 </p>
+
+---
+
+## 🏆 Рекомендуемый клиент: Cobalt Tavern
+
+<p align="center">
+  <a href="https://github.com/GrishaDeLumiere/cobalt-tavern" target="_blank">
+    <img src="https://img.shields.io/badge/Рекомендовано-Cobalt_Tavern-615CED?style=for-the-badge&logo=solid&logoColor=white" alt="Cobalt Tavern" />
+  </a>
+</p>
+
+Для раскрытия полного потенциала **Golem Gateway** мы рекомендуем использовать **[Cobalt Tavern](https://github.com/GrishaDeLumiere/cobalt-tavern)** — ультимативный, быстрый SolidJS-интерфейс для текстовых нейросетей без лагов и перегрузки интерфейса.
+
+- ⚡ **Сверхбыстрый рендеринг:** Фронтенд на SolidJS. Моментальный отклик и плавные 60 FPS даже на чатах длиной в 5,000+ сообщений.
+- 🏗 **Prompt Builder & CST Syntax:** Побайтовый контроль контекста, построение абстрактных синтаксических деревьев, логические ветвления `IF/ELSE` и визуализатор склейки промпта в реальном времени.
+- 🧠 **Продвинутый Lore Engine:** Сканер лорбуков с поддержкой булевой логики (`И ВСЕ`, `И ЛЮБОЙ`, `НЕ ВСЕ`, `НЕ ЛЮБОЙ`) и контролем рекурсии.
+- 🛡 **Трехслойный Regex-движок:** Полная фильтрация мусора на уровнях Входящие, Исходящие и Отображение.
+- 💡 **Нативная поддержка `<think>`:** Стриминг блоков размышлений с выводом скорости генерации (токены/сек).
+- 🔌 **Идеальная связка с Golem:** Полная поддержка префиксов моделей (`gemini-api/`, `gemini-cli/`, `deepseek/`, `qwen/`).
 
 ---
 
 ## 🎯 О проекте
 
-**Golem Gateway** — это прозрачный прокси-шлюз, который предоставляет единый REST-интерфейс, полностью совместимый со стандартом **OpenAI API**, используя автоматизацию headless-браузеров (Puppeteer) и перехват **XHR/Fetch** запросов.
+**Golem Gateway** — это высокопроизводительный локальный шлюз, предоставляющий единый REST-интерфейс по стандарту **OpenAI API** (`/v1/chat/completions`, `/v1/models`). Он объединяет автоматизацию браузеров (Puppeteer), перехват **XHR/Fetch** сессий и работу с официальными API-ключами с тонкой настройкой цензуры и маршрутизации.
 
-> 💡 **Идея проста:** вы работаете с любимыми клиентами (SillyTavern, Cursor, Cline), а Golem незаметно маршрутизирует запросы через веб-сессии, обходя ограничения прямых API.
+> 💡 **Идея проста:** вы работаете с клиентами ([Cobalt Tavern](https://github.com/GrishaDeLumiere/cobalt-tavern), SillyTavern, Cursor, Cline), а Golem берёт на себя роутинг, пулы ключей, обход фильтров безопасности и поддержку сессий.
 
 ---
 
@@ -36,9 +55,10 @@
 
 | Провайдер | Иконка | Метод | Особенности | Статус |
 |-----------|--------|-------|-------------|--------|
-| **DeepSeek** | <img src="./public/deepseek.svg" width="24" /> | `Puppeteer + XHR` | Захват сессии, авто-стерилизация истории | ✅ Стабильно |
-| **Qwen** | <img src="./public/qwen.svg" width="24" /> | `Puppeteer + Fetch` | Локальные сессии, управление пулом аккаунтов | ✅ Стабильно |
-| **Gemini** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Cloud Code Assist` | 💀 **МЕРТВ ДЛЯ ФИЗЛИЦ.** Остался только Enterprise | ⛔ R.I.P. |
+| **Gemini (Official API)** | <img src="./public/gemini.svg" width="24" /> | `Google REST & Interactions API` | Пул ключей `AIzaSy...`, обход цензуры (Safety OFF), поддержка Gemini 3.7+ | ✅ Стабильно |
+| **DeepSeek** | <img src="./public/deepseek.svg" width="24" /> | `Puppeteer + XHR` | Перехват сессии, видимый/headless режим, управление тегами `<think>` | ✅ Стабильно |
+| **Qwen Studio** | <img src="./public/qwen.svg" width="24" /> | `Puppeteer + Fetch` | Локальные сессии, управление пулом аккаунтов | ✅ Стабильно |
+| **Gemini (CLI)** | <img src="./public/gemini.svg" width="24" /> | `OAuth2 + Google Code Assist` | 💀 **Ограничен Google для физлиц.** Доступен Enterprise | ⚠️ Ограничен |
 
 ---
 
@@ -46,27 +66,32 @@
 
 ```mermaid
 graph LR
- A[Клиент: SillyTavern/Cursor] -->|OpenAI API | B(Golem Gateway)
- B -->|Puppeteer| C[DeepSeek Web]
- B -->|Puppeteer| D[Qwen Web]
- B -.->|💀 Мёртвый протокол| E[Gemini Cloud API]
- C & D -->|Ответ| B -->|OpenAI Format| A
+ A[Клиент: Cobalt Tavern / SillyTavern / IDE] -->|OpenAI API Format| B(Golem Gateway Core)
+ B -->|Interactions API + Safety OFF| C[Google Gemini API]
+ B -->|Puppeteer + XHR| D[DeepSeek Web]
+ B -->|Puppeteer + Fetch| E[Qwen Studio]
+ B -.->|OAuth2 Code Assist| F[Gemini CLI]
+ C & D & E -->|Stream / JSON Response| B -->|Unified OpenAI Format| A
 ```
 
 - **🔌 Полная совместимость с OpenAI API**
- Нативная поддержка эндпоинтов `/v1/models` и `/v1/chat/completions` (включая `stream: true`). Работает "из коробки" с любым клиентом.
+ Нативная поддержка эндпоинтов `/v1/models` и `/v1/chat/completions` (включая Server-Sent Events `stream: true`).
 
-- **🎨 Панель управления (Dashboard)**
- Современный веб-интерфейс на `:7777` с анимированным фоном, настройками частиц, управлением токенами и реал-тайм апдейтером ядра.
+- **🛡️ Тонкий контроль цензуры (Safety Settings Bypass)**
+ Принудительная передача порога `OFF` для категорий *Harassment, Hate Speech, Sexually Explicit, Dangerous Content*, а также продвинутых фильтров *Civic Integrity* и *Jailbreak Filter*.
 
-- **🧠 Динамическое управление памятью**
- Включайте/выключайте модули нейросетей на лету. Ненужные адаптеры мгновенно выгружаются из ОЗУ без перезагрузки сервера.
+- **📦 Интерактивный Каталог Моделей (Model Hub)**
+ Отдельное окно со списком всех запущенных моделей, фильтрацией по провайдерам, счетчиками и мгновенным копированием ID.
 
-- **🧹 Автоматическая стерилизация сессий**
- Теневые сессии на целевых платформах (DeepSeek, Qwen) удаляются сразу после генерации ответа — ваш аккаунт остаётся чистым.
+- **🔀 Система префиксов (Маршрутизация без коллизий)**
+ Возможность прямого обращения к нужной модели через префикс:
+  - `gemini-api/gemini-2.5-flash` → принудительно через Официальный API.
+  - `gemini-cli/gemini-2.5-flash` → принудительно через CLI / OAuth.
+  - `deepseek/deepseek-chat` → принудительно через адаптер DeepSeek.
+  - `qwen/qwen-max` → принудительно через адаптер Qwen.
 
-- **🧱 Модульная архитектура**
- Паттерн Router + изолированные провайдеры (`providers/`). Добавление новой нейросети занимает ~15 минут.
+- **🧠 Динамическое управление адаптерами**
+ Включайте и выключайте модули на лету — неиспользуемые адаптеры моментально выгружаются из оперативной памяти.
 
 ---
 
@@ -76,12 +101,12 @@ graph LR
  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white&label=Runtime" alt="Node.js" />
  <img src="https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white&label=Framework" alt="Express" />
  <img src="https://img.shields.io/badge/Puppeteer-40B5A4?style=for-the-badge&logo=puppeteer&logoColor=white&label=Automation" alt="Puppeteer" />
- <img src="https://img.shields.io/badge/Google+OAuth-4285F4?style=for-the-badge&logo=google&logoColor=white&label=Auth" alt="OAuth2" />
+ <img src="https://img.shields.io/badge/Google_Cloud-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white&label=Official_API" alt="Google Cloud" />
  <br>
  <img src="https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white" alt="HTML5" />
  <img src="https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white" alt="CSS3" />
  <img src="https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" alt="JavaScript" />
- <img src="https://img.shields.io/badge/Vanilla_JS-000000?style=for-the-badge&logo=javascript&logoColor=F7DF1E&label=No+Frameworks" alt="Vanilla" />
+ <img src="https://img.shields.io/badge/Vanilla_JS-000000?style=for-the-badge&logo=javascript&logoColor=F7DF1E&label=Modular_ES6" alt="Vanilla" />
 </p>
 
 ---
@@ -91,10 +116,10 @@ graph LR
 ### ▶️ Запуск в один клик (Windows)
 ```powershell
 # 1. Скачайте репозиторий
-# 2. Запустите start.bat — всё остальное сделает скрипт:
-# ✓ Проверка Node.js
-# ✓ npm install
-# ✓ Авто-открытие дашборда в браузере
+# 2. Запустите start.bat — скрипт выполнит:
+# ✓ Проверку окружения Node.js
+# ✓ Установку зависимостей (npm install)
+# ✓ Авто-запуск и открытие панели управления
 ```
 
 ### 🐧 Linux / macOS (Вручную)
@@ -109,7 +134,7 @@ npm install
 # 3. Запустите ядро
 node start.js
 
-# 4. Откройте в браузере:
+# 4. Откройте панель управления:
 # 👉 http://127.0.0.1:7777
 ```
 
@@ -117,43 +142,37 @@ node start.js
 
 ## 🔌 Интеграция с клиентами
 
-### ⚙️ Настройка подключения
+### ⚙️ Основные параметры подключения
 | Параметр | Значение |
 |----------|----------|
-| **API Type** | `OpenAI Compatible` / `Custom Endpoint` |
+| **API Type** | `OpenAI Compatible` / `Chat Completion` |
 | **Base URL** | `http://127.0.0.1:7777/v1` |
-| **API Key** | *любой текст* (или токен из вкладки «Система») |
+| **API Key** | *Любой текст* (или Мастер-токен из вкладки «Система») |
 
-### 🎭 Особенности для разных клиентов
-- **SillyTavern**: ~~Для Gemini используйте `http://127.0.0.1:7777/` (без `/v1`) в режиме *Google AI Studio*.~~ Опция мертва из-за бана CLI.
-- **Cursor / Cline / Roo Code**: Работают нативно через стандартный OpenAI-формат.
-- **Регулярные выражения**: Используйте встроенные инструменты вашего клиента, чтобы фильтровать служебные теги (`<think>`, веб-поиск) из памяти персонажа.
+### 🎭 Примеры для Cobalt Tavern, SillyTavern и Cursor
+- **Универсальный режим (OpenAI):** Выберите `Custom (OpenAI-compatible)`, укажите адрес `http://127.0.0.1:7777/v1`.
+- **Выбор конкретного провайдера:** В поле выбора модели указывайте имя с префиксом:
+  - `gemini-api/gemini-3.7-flash` (Interactions API Google)
+  - `deepseek/deepseek-v4-flash` (Web-сессия DeepSeek)
 
 ---
 
-## 🧱 Архитектура: Как добавить новый провайдер
+## 🧱 Архитектура проекта
 
 ```
-📦 providers/
- ┣ 📜 index.js # Реестр провайдеров
- ┣ 📜 deepseek.js # Пример: перехват сессии
- ┣ 📜 qwen.js # Пример: локальные сессии
- ┗ 📜 gemini.js # 💀 Мёртвый провайдер, требует Enterprise-лицензию
+📦 golem-gateway/
+ ┣ 📂 providers/               # Изолированные адаптеры нейросетей
+ ┃ ┣ 📜 deepseek.js           # Puppeteer + XHR перехват
+ ┃ ┣ 📜 qwen.js               # Puppeteer + Fetch сессии
+ ┃ ┣ 📜 gemini-interaction.js # Официальный Google API + Safety bypass
+ ┃ ┗ 📜 gemini.js             # CLI OAuth адаптер
+ ┣ 📂 public/                 # Модульный ES6 фронтенд
+ ┃ ┣ 📂 js/managers/          # Менеджеры модалок, моделей и аккаунтов
+ ┃ ┗ 📜 dashboard.css         # Киберпанк Glassmorphism стили
+ ┣ 📂 views/                  # HTML-шаблоны и модальные окна
+ ┣ 📜 settings.js             # Управление конфигурацией ядра
+ ┗ 📜 start.js                # Express сервер и маршрутизатор
 ```
-
-**Алгоритм добавления:**
-1. Создайте файл `providers/newprovider.js`
-2. Реализуйте 4 функции жизненного цикла:
- ```js
- initProvider(port) // Инициализация
- setupRoutes(app, port) // Роуты и логика
- handleChatCompletion() // Обработка запросов
- unloadProvider() // Очистка памяти
- ```
-3. Зарегистрируйте провайдер в `providers/index.js`
-4. Добавьте UI-элементы в `dashboard.html` и логику в `settings.js`
-
-> 🎯 **Цель:** добавить нового провайдера за 15-20 минут.
 
 ---
 
