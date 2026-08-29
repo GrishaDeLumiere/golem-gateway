@@ -63,14 +63,49 @@ qwenProvider.setupRoutes(app, PORT);
 geminiProvider.setupRoutes(app, PORT);
 geminiApiProvider.setupRoutes(app, PORT);
 
-app.get(['/v1', '/v1/models'], (req, res) => {
+// Вспомогательная функция для безопасного извлечения моделей любого формата (строки/объекты/Proxy)
+function extractModels(providerInstance, providerName, prefix) {
+    if (!providerInstance || !providerInstance.MODELS) return [];
+    try {
+        const rawList = Array.from(providerInstance.MODELS || []);
+        return rawList.map(m => {
+            const modelId = typeof m === 'string' ? m : (m.id || m.name || '');
+            return {
+                id: modelId,
+                object: "model",
+                provider: providerName,
+                prefixId: `${prefix}/${modelId}`
+            };
+        }).filter(m => m.id !== '');
+    } catch (e) {
+        console.error(`[⚠️ Каталог моделей] Ошибка провайдера ${providerName}:`, e.message);
+        return [];
+    }
+}
+
+app.get(['/v1', '/v1/models', '/api/models-catalog'], (req, res) => {
     const currentSettings = getSettings();
     let models = [];
-    if (currentSettings.providers.deepseek) models.push(...deepseekProvider.MODELS);
-    if (currentSettings.providers.qwen) models.push(...qwenProvider.MODELS);
-    if (currentSettings.providers.gemini) models.push(...geminiProvider.MODELS);
-    if (currentSettings.providers.gemini_api) models.push(...geminiApiProvider.MODELS);
-    res.json({ object: "list", data: models });
+
+    try {
+        if (currentSettings.providers.deepseek) {
+            models.push(...extractModels(deepseekProvider, 'DeepSeek', 'deepseek'));
+        }
+        if (currentSettings.providers.qwen) {
+            models.push(...extractModels(qwenProvider, 'Qwen Studio', 'qwen'));
+        }
+        if (currentSettings.providers.gemini) {
+            models.push(...extractModels(geminiProvider, 'Gemini CLI', 'gemini-cli'));
+        }
+        if (currentSettings.providers.gemini_api) {
+            models.push(...extractModels(geminiApiProvider, 'Gemini Official API', 'gemini-api'));
+        }
+
+        res.json({ object: "list", data: models });
+    } catch (err) {
+        console.error('[❌ Каталог моделей] Критический сбой:', err.message);
+        res.status(500).json({ error: { message: err.message }, data: [] });
+    }
 });
 
 app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
@@ -78,25 +113,55 @@ app.post(['/v1/chat/completions', '/chat/completions'], async (req, res) => {
     res.setTimeout(0);
 
     const currentSettings = getSettings();
-    const requestedModel = req.body.model || currentSettings.defaultModel;
+    let rawModel = req.body.model || currentSettings.defaultModel;
+    let targetModel = rawModel;
+    let forceProvider = null;
 
-    console.log(`\n[📥 РОУТЕР] Поступил запрос на модель: ${requestedModel}`);
+    // === СИСТЕМА ПРЕФИКСОВ МАРШРУТИЗАЦИИ ===
+    if (rawModel.startsWith('gemini-cli/') || rawModel.startsWith('cli/')) {
+        forceProvider = 'gemini';
+        targetModel = rawModel.replace(/^(gemini-cli|cli)\//, '');
+    } else if (rawModel.startsWith('gemini-api/') || rawModel.startsWith('api/') || rawModel.startsWith('official/')) {
+        forceProvider = 'gemini_api';
+        targetModel = rawModel.replace(/^(gemini-api|api|official)\//, '');
+    } else if (rawModel.startsWith('deepseek/')) {
+        forceProvider = 'deepseek';
+        targetModel = rawModel.replace(/^deepseek\//, '');
+    } else if (rawModel.startsWith('qwen/')) {
+        forceProvider = 'qwen';
+        targetModel = rawModel.replace(/^qwen\//, '');
+    }
+
+    req.body.model = targetModel;
+
+    console.log(`\n[📥 РОУТЕР] Запрос: "${rawModel}" → [Модель: ${targetModel} | Провайдер: ${forceProvider || 'Авто-детект'}]`);
     if (currentSettings.debugMode) {
         console.log(`[🐛 DEBUG] Stream: ${!!req.body.stream} | Промпт передан провайдеру.`);
     }
 
     try {
-        if (requestedModel.startsWith('deepseek') && currentSettings.providers.deepseek) {
-            await deepseekProvider.handleChatCompletion(req, res);
-        } else if (requestedModel.startsWith('qwen') && currentSettings.providers.qwen) {
-            await qwenProvider.handleChatCompletion(req, res);
-        } else if (requestedModel.startsWith('gemini-3') && currentSettings.providers.gemini_api) {
+        // 1. Если был указан явный префикс
+        if (forceProvider === 'gemini_api' && currentSettings.providers.gemini_api) {
             await geminiApiProvider.handleChatCompletion(req, res);
-        } else if ((requestedModel.startsWith('gemini') || requestedModel.startsWith('learnlm')) && currentSettings.providers.gemini) {
+        } else if (forceProvider === 'gemini' && currentSettings.providers.gemini) {
+            await geminiProvider.handleChatCompletion(req, res);
+        } else if (forceProvider === 'deepseek' && currentSettings.providers.deepseek) {
+            await deepseekProvider.handleChatCompletion(req, res);
+        } else if (forceProvider === 'qwen' && currentSettings.providers.qwen) {
+            await qwenProvider.handleChatCompletion(req, res);
+        }
+        // 2. Дефолтный авто-роутинг (без префикса)
+        else if (targetModel.startsWith('deepseek') && currentSettings.providers.deepseek) {
+            await deepseekProvider.handleChatCompletion(req, res);
+        } else if (targetModel.startsWith('qwen') && currentSettings.providers.qwen) {
+            await qwenProvider.handleChatCompletion(req, res);
+        } else if (targetModel.startsWith('gemini-3') && currentSettings.providers.gemini_api) {
+            await geminiApiProvider.handleChatCompletion(req, res);
+        } else if ((targetModel.startsWith('gemini') || targetModel.startsWith('learnlm')) && currentSettings.providers.gemini) {
             await geminiProvider.handleChatCompletion(req, res);
         } else {
-            console.log(`[❌ РОУТЕР] Ошибка: Модель ${requestedModel} отключена или не существует.`);
-            res.status(403).json({ error: { message: `Модель ${requestedModel} отключена в настройках или не найдена.` } });
+            console.log(`[❌ РОУТЕР] Ошибка: Модель ${rawModel} отключена или не существует.`);
+            res.status(403).json({ error: { message: `Модель ${rawModel} отключена в настройках или не найдена.` } });
         }
     } catch (err) {
         console.error('[❌ РОУТЕР] Ошибка перенаправления:', err.message);

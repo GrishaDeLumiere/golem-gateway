@@ -3,6 +3,7 @@ import { CardRenderer } from './components/CardRenderer.js';
 import { SettingsManager } from './managers/SettingsManager.js';
 import { AccountManager } from './managers/AccountManager.js';
 import { UpdateManager } from './managers/UpdateManager.js';
+import { ModelsManager } from './managers/ModelsManager.js';
 
 class Application {
     constructor() {
@@ -10,6 +11,7 @@ class Application {
         this.settings = new SettingsManager(this.modal);
         this.accounts = new AccountManager(this.modal);
         this.updater = new UpdateManager();
+        this.models = new ModelsManager(this.modal);
 
         this.initGlobals();
         this.setupEventListeners();
@@ -21,6 +23,9 @@ class Application {
         // Модалки
         window.closeModal = (e) => this.modal.closeAll(e);
         window.copySnippet = () => this.modal.copySnippet();
+
+        // Каталог Моделей
+        window.openModelsModal = () => this.models.open();
 
         // Настройки
         window.openSettingsModal = () => this.settings.open();
@@ -36,7 +41,7 @@ class Application {
         window.checkUpdateModal = () => this.updater.check();
         window.openUpdaterWindow = () => this.updater.openWindow();
 
-        // Gemini
+        // Gemini (CLI)
         window.addGeminiAccount = () => this.accounts.addGeminiAccount();
         window.cancelGeminiEdit = () => this.accounts.cancelGeminiEdit();
         window.saveGeminiEdit = () => this.accounts.saveGeminiEdit();
@@ -47,6 +52,12 @@ class Application {
         window.cancelGeminiApiEdit = () => this.accounts.cancelGeminiApiEdit();
         window.saveGeminiApiEdit = () => this.accounts.saveGeminiApiEdit();
         window.switchGeminiApiTab = (tab) => this.accounts.switchGeminiApiTab(tab);
+
+        // DeepSeek
+        window.addDeepSeekAccount = () => this.accounts.addDeepSeekAccount();
+        window.cancelDeepSeekEdit = () => this.accounts.cancelDeepSeekEdit();
+        window.saveDeepSeekEdit = () => this.accounts.saveDeepSeekEdit();
+        window.switchDeepSeekTab = (tab) => this.accounts.switchDeepSeekTab(tab);
 
         // Generic
         window.addGenericAccount = () => this.accounts.addGenericAccount();
@@ -77,8 +88,9 @@ class Application {
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 this.refreshUI();
-                if (document.getElementById('geminiModal').classList.contains('active')) this.accounts.fetchGeminiAccounts();
-                if (document.getElementById('genericAccountsModal').classList.contains('active')) this.accounts.fetchGenericAccounts();
+                if (document.getElementById('geminiModal')?.classList.contains('active')) this.accounts.fetchGeminiAccounts();
+                if (document.getElementById('genericAccountsModal')?.classList.contains('active')) this.accounts.fetchGenericAccounts();
+                if (document.getElementById('deepseekModal')?.classList.contains('active')) this.accounts.fetchDeepSeekAccounts();
             }
         });
     }

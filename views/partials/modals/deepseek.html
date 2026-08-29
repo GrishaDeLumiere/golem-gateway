@@ -1,0 +1,102 @@
+<!-- Модальное окно управления DeepSeek -->
+<div class="modal-overlay" id="deepseekModal" onclick="closeModal(event)">
+  <div class="modal">
+    <!-- Шапка -->
+    <div class="modal-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+      <h2>
+        <img src="/deepseek.svg" width="28" height="28" style="margin-right: 12px;" alt="DeepSeek">
+        <span>Управление DeepSeek</span>
+      </h2>
+      <button class="close-btn" onclick="closeModal(event)">×</button>
+    </div>
+
+    <!-- Табы -->
+    <div class="gemini-tabs" id="deepseekTabsContainer">
+      <button class="gemini-tab-btn active" onclick="switchDeepSeekTab('accounts')">Пул аккаунтов</button>
+      <button class="gemini-tab-btn" onclick="switchDeepSeekTab('settings')">Настройки движка</button>
+    </div>
+
+    <div class="gemini-view-container">
+
+      <!-- ========================================= -->
+      <!-- РАЗДЕЛ 1: ПУЛ АККАУНТОВ                   -->
+      <!-- ========================================= -->
+      <div id="deepseekAccountsSection" class="animated-view">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+          <div style="max-width: 65%;">
+            <p style="color: var(--text-muted); margin: 0; font-size: 14px; line-height: 1.5;">
+              Переключайтесь между сессиями DeepSeek или добавляйте новые аккаунты.
+            </p>
+          </div>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 16px; font-size: 14px;" onclick="addDeepSeekAccount()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Добавить сессию</span>
+          </button>
+        </div>
+        <div id="deepseekAccountsList" style="max-height: 380px; overflow-y: auto; padding-right: 4px;"></div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- РАЗДЕЛ 2: НАСТРОЙКИ ДВИЖКА               -->
+      <!-- ========================================= -->
+      <div id="deepseekSettingsSection" class="animated-view" style="display: none;">
+        <div class="gemini-form-container">
+          <h3 class="settings-group-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #3b82f6;">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            Параметры браузерного движка
+          </h3>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetShowBrowser">Отображать процесс браузера</label>
+              <p class="settings-card-desc">Отключает Headless-режим. Вы сможете наблюдать за действиями автоматизации в реальном окне.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetShowBrowser">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetSendThink">Отправлять блок рассуждений</label>
+              <p class="settings-card-desc">Передавать клиенту теги <code>&lt;think&gt;</code>. Отключите, если вам нужен только чистый финальный ответ.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetSendThink" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 24px;" onclick="window.app.accounts.saveProviderSettings('deepseek', event)">Сохранить настройки</button>
+        </div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- РАЗДЕЛ 3: РЕДАКТОР ПРОФИЛЯ               -->
+      <!-- ========================================= -->
+      <div id="deepseekEditorSection" class="animated-view" style="display: none;">
+        <div class="gemini-form-container">
+          <div class="gemini-form-group">
+            <label for="deepseekInputName">Название профиля</label>
+            <input type="text" id="deepseekInputName" placeholder="Например: Основной аккаунт DeepSeek" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-flat" style="width: auto; padding: 10px 20px;" onclick="cancelDeepSeekEdit()">Назад</button>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="saveDeepSeekEdit()">Сохранить профиль</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

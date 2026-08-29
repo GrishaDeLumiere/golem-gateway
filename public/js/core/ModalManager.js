@@ -10,6 +10,8 @@ export class ModalManager {
             window.app.accounts.openGeminiManager();
         } else if (id === 'gemini_api') {
             window.app.accounts.openGeminiApiManager();
+        } else if (id === 'deepseek') {
+            window.app.accounts.openDeepSeekManager();
         } else if (data && data.isAuth) {
             window.app.accounts.openGenericManager(id);
         } else {

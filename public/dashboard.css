@@ -1600,3 +1600,81 @@
      visibility: visible;
      transform: translateX(-50%) translateY(0);
  }
+
+ /* --- СТИЛИ ДЛЯ КАТАЛОГА МОДЕЛЕЙ (MODEL HUB) --- */
+
+ .models-category-chips {
+     display: flex;
+     gap: 8px;
+     overflow-x: auto;
+     padding-bottom: 4px;
+ }
+
+ .models-category-chips::-webkit-scrollbar {
+     height: 4px;
+ }
+
+ .models-category-chips::-webkit-scrollbar-thumb {
+     background: rgba(255, 255, 255, 0.1);
+     border-radius: 4px;
+ }
+
+ .cat-chip {
+     background: rgba(255, 255, 255, 0.03);
+     border: 1px solid var(--border);
+     color: var(--text-muted);
+     padding: 6px 12px;
+     border-radius: 20px;
+     font-size: 13px;
+     font-weight: 500;
+     cursor: pointer;
+     display: flex;
+     align-items: center;
+     gap: 6px;
+     white-space: nowrap;
+     transition: all 0.2s ease;
+ }
+
+ .cat-chip:hover {
+     background: rgba(255, 255, 255, 0.06);
+     color: var(--text);
+     border-color: rgba(255, 255, 255, 0.15);
+ }
+
+ .cat-chip.active {
+     background: rgba(97, 92, 237, 0.15);
+     border-color: var(--accent);
+     color: #ffffff;
+ }
+
+ .cat-count {
+     font-size: 11px;
+     background: rgba(255, 255, 255, 0.1);
+     padding: 1px 6px;
+     border-radius: 10px;
+     color: var(--text);
+ }
+
+ .cat-chip.active .cat-count {
+     background: var(--accent);
+     color: #ffffff;
+ }
+
+ /* Карточка модели */
+ .model-card-item {
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+     background: rgba(255, 255, 255, 0.02);
+     border: 1px solid var(--border);
+     border-radius: 12px;
+     padding: 12px 18px;
+     gap: 14px;
+     transition: all 0.2s ease;
+ }
+
+ .model-card-item:hover {
+     background: rgba(255, 255, 255, 0.05);
+     border-color: rgba(255, 255, 255, 0.12);
+     transform: translateY(-1px);
+ }

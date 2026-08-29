@@ -5,6 +5,8 @@ export class AccountManager {
         this.genericDb = { active: 0, accounts: [] };
         this.geminiApiDb = { active: 0, accounts: [] };
         this.geminiApiEditingIndex = -1;
+        this.deepseekDb = { active: 0, accounts: [] };
+        this.deepseekEditingIndex = -1;
         this.currentProviderId = null;
         this.geminiEditingIndex = -1;
         this.genericEditingIndex = -1;
@@ -281,45 +283,27 @@ export class AccountManager {
     }
 
     // ==========================================
-    // GENERIC (DeepSeek/Qwen)
+    // GENERIC (Qwen и др.)
     // ==========================================
     async openGenericManager(id) {
         this.currentProviderId = id;
         const data = window.__PROVIDERS__[id];
-        document.getElementById('genericAccountsIcon').innerHTML = data.logo;
-        document.getElementById('genericAccountsTitle').innerText = 'Аккаунты: ' + data.name;
 
-        // Логика отображения настроек для конкретного провайдера
-        if (id === 'deepseek') {
-            document.getElementById('deepseekSettingsBlock').style.display = 'block';
-            document.getElementById('genericNoSettingsBlock').style.display = 'none';
-            try {
-                const res = await fetch('/api/settings');
-                const settings = await res.json();
-                const dsConfig = settings.providerSettings?.deepseek || { showBrowser: false, sendThink: true };
-                document.getElementById('dsSetShowBrowser').checked = dsConfig.showBrowser;
-                document.getElementById('dsSetSendThink').checked = dsConfig.sendThink ?? true;
-            } catch (e) { console.error(e); }
-        } else {
-            document.getElementById('deepseekSettingsBlock').style.display = 'none';
-            document.getElementById('genericNoSettingsBlock').style.display = 'block';
-        }
+        const iconEl = document.getElementById('genericAccountsIcon');
+        const titleEl = document.getElementById('genericAccountsTitle');
+        if (iconEl && data) iconEl.innerHTML = data.logo;
+        if (titleEl && data) titleEl.innerText = 'Аккаунты: ' + data.name;
 
-        document.getElementById('genericAccountsModal').classList.add('active');
-        document.getElementById('genericTabsContainer').style.display = 'flex';
-        this.switchGenericTab('accounts');
+        // Показываем секцию аккаунтов и скрываем редактор
+        this.toggleView('genericAccountsSection', ['genericEditorSection']);
+
+        document.getElementById('genericAccountsModal')?.classList.add('active');
         await this.fetchGenericAccounts();
     }
 
     switchGenericTab(tabName) {
-        const tabs = document.getElementById('genericTabsContainer').querySelectorAll('.gemini-tab-btn');
-        tabs[0].classList.toggle('active', tabName === 'accounts');
-        tabs[1].classList.toggle('active', tabName === 'settings');
-
         if (tabName === 'accounts') {
-            this.toggleView('genericAccountsSection', ['genericSettingsSection', 'genericEditorSection']);
-        } else if (tabName === 'settings') {
-            this.toggleView('genericSettingsSection', ['genericAccountsSection', 'genericEditorSection']);
+            this.toggleView('genericAccountsSection', ['genericEditorSection']);
         }
     }
 
@@ -382,46 +366,50 @@ export class AccountManager {
 
     addGenericAccount() {
         if (this.isLocked) return;
-        document.getElementById('genericAccountsModal').classList.remove('active');
+        document.getElementById('genericAccountsModal')?.classList.remove('active');
 
-        // Так как авто-вход пока реализован только у DeepSeek, выбор показываем только для него
         if (this.currentProviderId === 'deepseek') {
-            document.getElementById('authChoiceModal').classList.add('active');
+            const authChoice = document.getElementById('authChoiceModal');
+            if (authChoice) authChoice.classList.add('active');
+            else this.startAutoAuth();
         } else {
-            // Для Qwen пока сразу открываем окно с кодом
             this.startManualAuth();
         }
     }
 
     startAutoAuth() {
-        document.getElementById('authChoiceModal').classList.remove('active');
-        this.modal.showToast(window.t('ds_toast_auth_start', 'Открываю браузер... Пожалуйста, авторизуйтесь.'), 'info');
+        document.getElementById('authChoiceModal')?.classList.remove('active');
+        this.modal.showToast(window.t ? window.t('ds_toast_auth_start', 'Открываю браузер... Пожалуйста, авторизуйтесь.') : 'Открываю браузер... Пожалуйста, авторизуйтесь.', 'info');
 
         fetch(`/api/${this.currentProviderId}/auto-auth`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    this.modal.showToast(window.t('ds_toast_auth_success', 'Аккаунт успешно добавлен в ядро.'), 'success');
+                    this.modal.showToast(window.t ? window.t('ds_toast_auth_success', 'Аккаунт успешно добавлен в ядро.') : 'Аккаунт успешно добавлен в ядро.', 'success');
                     window.app.refreshUI();
-                    this.openGenericManager(this.currentProviderId);
+                    if (this.currentProviderId === 'deepseek') {
+                        this.openDeepSeekManager();
+                    } else {
+                        this.openGenericManager(this.currentProviderId);
+                    }
                 } else {
-                    let errorMsg = data.error || window.t('ds_auth_aborted', 'Авторизация прервана');
-
-                    if (data.errorCode) {
+                    let errorMsg = data.error || (window.t ? window.t('ds_auth_aborted', 'Авторизация прервана') : 'Авторизация прервана');
+                    if (data.errorCode && window.t) {
                         errorMsg = window.t(data.errorCode, data.error);
                     }
-
-                    this.modal.showToast(window.t('ds_toast_auth_error', 'Ошибка: ') + errorMsg, 'error');
+                    this.modal.showToast((window.t ? window.t('ds_toast_auth_error', 'Ошибка: ') : 'Ошибка: ') + errorMsg, 'error');
                 }
             })
             .catch(err => {
-                this.modal.showToast(window.t('ds_toast_server_error', 'Ошибка связи с сервером.'), 'error');
+                this.modal.showToast(window.t ? window.t('ds_toast_server_error', 'Ошибка связи с сервером.') : 'Ошибка связи с сервером.', 'error');
             });
     }
 
     startManualAuth() {
-        document.getElementById('authChoiceModal').classList.remove('active');
-        this.modal.openBaseAuthModal(this.currentProviderId, window.__PROVIDERS__[this.currentProviderId]);
+        document.getElementById('authChoiceModal')?.classList.remove('active');
+        if (this.currentProviderId && window.__PROVIDERS__[this.currentProviderId]) {
+            this.modal.openBaseAuthModal(this.currentProviderId, window.__PROVIDERS__[this.currentProviderId]);
+        }
     }
 
     async setActiveGeneric(index) {
@@ -660,6 +648,131 @@ export class AccountManager {
         if (this.geminiApiDb.active >= this.geminiApiDb.accounts.length) this.geminiApiDb.active = 0;
         await fetch('/api/gemini_api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.geminiApiDb) });
         this.renderGeminiApiAccounts();
+        window.app.refreshUI();
+    }
+
+    // ==========================================
+    // DEEPSEEK MANAGER
+    // ==========================================
+    async openDeepSeekManager() {
+        document.getElementById('deepseekModal').classList.add('active');
+        document.getElementById('deepseekTabsContainer').style.display = 'flex';
+        this.switchDeepSeekTab('accounts');
+        await this.fetchDeepSeekAccounts();
+
+        try {
+            const res = await fetch('/api/settings');
+            const settings = await res.json();
+            const dsConfig = settings.providerSettings?.deepseek || { showBrowser: false, sendThink: true };
+            document.getElementById('dsSetShowBrowser').checked = dsConfig.showBrowser || false;
+            document.getElementById('dsSetSendThink').checked = dsConfig.sendThink !== false;
+        } catch (e) { }
+    }
+
+    switchDeepSeekTab(tabName) {
+        const tabs = document.querySelectorAll('#deepseekTabsContainer .gemini-tab-btn');
+        tabs.forEach(t => t.classList.remove('active'));
+
+        if (tabName === 'accounts') {
+            tabs[0].classList.add('active');
+            this.toggleView('deepseekAccountsSection', ['deepseekSettingsSection', 'deepseekEditorSection']);
+        } else if (tabName === 'settings') {
+            tabs[1].classList.add('active');
+            this.toggleView('deepseekSettingsSection', ['deepseekAccountsSection', 'deepseekEditorSection']);
+        }
+    }
+
+    async fetchDeepSeekAccounts() {
+        try {
+            const res = await fetch('/api/deepseek/accounts');
+            this.deepseekDb = res.ok ? await res.json() : { active: 0, accounts: [] };
+        } catch { this.deepseekDb = { active: 0, accounts: [] }; }
+        this.renderDeepSeekAccounts();
+    }
+
+    renderDeepSeekAccounts() {
+        const listEl = document.getElementById('deepseekAccountsList');
+        listEl.innerHTML = '';
+        if (this.deepseekDb.accounts.length === 0) {
+            listEl.innerHTML = `<div style="text-align: center; padding: 60px 20px; border: 1px dashed #27272a; border-radius: 12px; margin-top: 12px;"><p style="color: #a1a1aa;">Пул сессий DeepSeek пуст.</p></div>`;
+            return;
+        }
+
+        this.deepseekDb.accounts.forEach((acc, index) => {
+            const isActive = this.deepseekDb.active === index;
+            const profileName = acc.name || `Сессия #${index + 1}`;
+            const tokenInfo = acc.token ? `token: ${acc.token.substring(0, 8)}...${acc.token.slice(-4)}` : "Авторизован";
+
+            listEl.innerHTML += `
+            <div class="setting-item ${isActive ? 'active-gemini-item' : ''}" style="margin-bottom: 12px; cursor: pointer;" 
+                 onclick="window.app.accounts.setActiveDeepSeek(${index})">
+                <label class="gemini-radio"><input type="radio" ${isActive ? 'checked' : ''} disabled><span class="radio-mark"></span></label>
+                <div class="setting-info" style="flex: 1; padding: 0 16px;">
+                    <h4 style="margin: 0; font-size: 15px;">${profileName}</h4>
+                    <div style="font-size: 13px; font-family: monospace; color: var(--text-muted);">${tokenInfo}</div>
+                </div>
+                <div style="display: flex; gap: 8px;" onclick="event.stopPropagation()">
+                    <button class="btn btn-icon" onclick="window.app.accounts.editDeepSeekAccount(${index})">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    </button>
+                    <button class="btn btn-icon btn-danger-flat" onclick="window.app.accounts.deleteDeepSeekAccount(${index})">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </div>`;
+        });
+    }
+
+    addDeepSeekAccount() {
+        this.currentProviderId = 'deepseek';
+        document.getElementById('deepseekModal')?.classList.remove('active');
+
+        const authChoice = document.getElementById('authChoiceModal');
+        if (authChoice) {
+            authChoice.classList.add('active');
+        } else {
+            this.startAutoAuth();
+        }
+    }
+
+    editDeepSeekAccount(index) {
+        this.deepseekEditingIndex = index;
+        document.getElementById('deepseekInputName').value = this.deepseekDb.accounts[index].name || '';
+        document.getElementById('deepseekTabsContainer').style.display = 'none';
+        this.toggleView('deepseekEditorSection', ['deepseekAccountsSection', 'deepseekSettingsSection']);
+    }
+
+    async saveDeepSeekEdit() {
+        if (this.deepseekEditingIndex === -1) return;
+        this.deepseekDb.accounts[this.deepseekEditingIndex].name = document.getElementById('deepseekInputName').value.trim();
+        await fetch('/api/deepseek/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.deepseekDb) });
+        this.cancelDeepSeekEdit();
+        this.renderDeepSeekAccounts();
+        window.app.refreshUI();
+        this.modal.showToast('Имя сессии сохранено');
+    }
+
+    cancelDeepSeekEdit() {
+        this.deepseekEditingIndex = -1;
+        document.getElementById('deepseekTabsContainer').style.display = 'flex';
+        this.switchDeepSeekTab('accounts');
+    }
+
+    async setActiveDeepSeek(index) {
+        if (this.deepseekDb.active === index) return;
+        this.deepseekDb.active = index;
+        await fetch('/api/deepseek/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.deepseekDb) });
+        this.renderDeepSeekAccounts();
+        window.app.refreshUI();
+        this.modal.showToast('Сессия DeepSeek переключена');
+    }
+
+    async deleteDeepSeekAccount(index) {
+        if (!confirm("Удалить эту сессию DeepSeek?")) return;
+        this.deepseekDb.accounts.splice(index, 1);
+        if (this.deepseekDb.active >= this.deepseekDb.accounts.length) this.deepseekDb.active = 0;
+        await fetch('/api/deepseek/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.deepseekDb) });
+        this.renderDeepSeekAccounts();
         window.app.refreshUI();
     }
 

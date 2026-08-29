@@ -1,0 +1,51 @@
+<!-- Модальное окно: Каталог Моделей и Префиксов -->
+<div class="modal-overlay" id="modelsModal" onclick="closeModal(event)">
+  <div class="modal" style="max-width: 860px; max-height: 85vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+
+    <!-- Шапка -->
+    <div class="modal-header" style="margin-bottom: 16px; padding-bottom: 14px;">
+      <h2 style="font-size: 20px;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        <span>Каталог подключенных моделей</span>
+      </h2>
+      <button class="close-btn" onclick="closeModal(event)">×</button>
+    </div>
+
+    <!-- Поиск и Фильтры-категории -->
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <div style="position: relative; flex: 1;">
+          <input type="text" id="modelsGlobalSearch" class="modern-input" placeholder="Поиск по названию или провайдеру..." style="width: 100%; padding-left: 38px;" oninput="window.app.models.filter()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted);">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+        <button class="btn btn-secondary" style="width: auto; padding: 10px 16px; font-size: 13px;" onclick="window.app.models.load()" title="Обновить список">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Фильтры по провайдерам -->
+      <div class="models-category-chips" id="modelsCategoryChips">
+        <button class="cat-chip active" onclick="window.app.models.setCategory('all', this)">Все <span class="cat-count" id="count-all">0</span></button>
+        <button class="cat-chip" onclick="window.app.models.setCategory('Gemini Official API', this)">Gemini Official API <span class="cat-count" id="count-gemini-api">0</span></button>
+        <button class="cat-chip" onclick="window.app.models.setCategory('Gemini CLI', this)">Gemini CLI <span class="cat-count" id="count-gemini-cli">0</span></button>
+        <button class="cat-chip" onclick="window.app.models.setCategory('DeepSeek', this)">DeepSeek <span class="cat-count" id="count-deepseek">0</span></button>
+        <button class="cat-chip" onclick="window.app.models.setCategory('Qwen Studio', this)">Qwen Studio <span class="cat-count" id="count-qwen">0</span></button>
+      </div>
+    </div>
+
+    <!-- Список моделей -->
+    <div id="modelsModalList" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px;">
+      <div style="text-align: center; color: var(--text-muted); padding: 40px;">Загрузка моделей...</div>
+    </div>
+  </div>
+</div>

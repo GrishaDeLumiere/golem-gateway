@@ -99,7 +99,10 @@ class AuthInstaller {
             html = html.replace('<!-- INCLUDE_MODAL_GEMINI -->', loadPartial('modals/gemini.html'));
             html = html.replace('<!-- INCLUDE_MODAL_GENERIC -->', loadPartial('modals/generic.html'));
             html = html.replace('<!-- INCLUDE_MODAL_GEMINI_API -->', loadPartial('modals/gemini-api.html'));
+            html = html.replace('<!-- INCLUDE_MODAL_DEEPSEEK -->', loadPartial('modals/deepseek.html'));
+            html = html.replace('<!-- INCLUDE_MODAL_AUTH_CHOICE -->', loadPartial('modals/auth-choice.html'));
             html = html.replace('<!-- INCLUDE_MODAL_UPDATE -->', loadPartial('modals/update.html'));
+            html = html.replace('<!-- INCLUDE_MODAL_MODELS -->', loadPartial('modals/models.html'));
 
             // 4. Подставляем переменные
             html = html.replace("'__PROVIDERS_JSON__'", JSON.stringify(providersMap));

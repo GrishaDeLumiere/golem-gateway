@@ -1,0 +1,44 @@
+/* =======================================================
+   --- ГЛОБАЛЬНЫЙ ТЕМНЫЙ КИБЕРПАНК-СКРОЛЛБАР --- 
+   ======================================================= */
+
+/* Для Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Для Chrome, Edge, Safari, Brave */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Эффект подсветки при наведении на ползунок */
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+    box-shadow: 0 0 10px rgba(97, 92, 237, 0.5);
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Дополнительно для модальных списков */
+#modelsModalList::-webkit-scrollbar,
+#modelsCatalogList::-webkit-scrollbar,
+.settings-content::-webkit-scrollbar,
+.modal::-webkit-scrollbar {
+    width: 5px;
+}
