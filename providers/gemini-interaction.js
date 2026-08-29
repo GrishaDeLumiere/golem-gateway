@@ -131,6 +131,20 @@ async function handleChatCompletion(req, res) {
         const payload = {};
         let endpoint = "";
 
+        // === СБОРКА SAFETY SETTINGS ===
+        const geminiApiSet = settings.providerSettings?.gemini_api || {};
+        const sendSafety = geminiApiSet.sendSafety !== false;
+        const safetySettingsArr = [];
+
+        if (sendSafety) {
+            if (geminiApiSet.safeHarassment !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" });
+            if (geminiApiSet.safeHate !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" });
+            if (geminiApiSet.safeSex !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" });
+            if (geminiApiSet.safeDanger !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" });
+            if (geminiApiSet.safeCivic) safetySettingsArr.push({ category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "OFF" });
+            if (geminiApiSet.safeJailbreak) safetySettingsArr.push({ category: "HARM_CATEGORY_JAILBREAK", threshold: "OFF" });
+        }
+
         // === МАРШРУТИЗАЦИЯ ===
         if (useInteractions) {
             endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions${isStreaming ? '?alt=sse' : ''}`;
@@ -138,6 +152,9 @@ async function handleChatCompletion(req, res) {
             payload.store = false;
             payload.input = combinedInputText.trim();
             if (systemText) payload.system_instruction = systemText.trim();
+
+            // Внедряем настройки безопасности (Interactions использует snake_case)
+            if (safetySettingsArr.length > 0) payload.safety_settings = safetySettingsArr;
 
             payload.generation_config = {};
             if (openaiReq.temperature !== undefined) payload.generation_config.temperature = openaiReq.temperature;
@@ -148,6 +165,9 @@ async function handleChatCompletion(req, res) {
             endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:${action}`;
             payload.contents = geminiContents;
             if (systemText) payload.systemInstruction = { parts: [{ text: systemText.trim() }] };
+
+            // Внедряем настройки безопасности (Standard использует camelCase)
+            if (safetySettingsArr.length > 0) payload.safetySettings = safetySettingsArr;
 
             payload.generationConfig = {};
             if (openaiReq.temperature !== undefined) payload.generationConfig.temperature = openaiReq.temperature;

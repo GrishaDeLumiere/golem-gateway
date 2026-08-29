@@ -59,30 +59,145 @@
       <!-- ========================================= -->
       <div id="geminiApiSettingsSection" class="animated-view" style="display: none;">
         <div class="gemini-form-container">
-          <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 500;">Параметры протокола</h3>
 
-          <!-- Кастомный свитч Interactions API -->
-          <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-            <div style="max-width: 80%;">
-              <label style="font-size: 14px; font-weight: 500; color: var(--text); display: block; margin-bottom: 6px; cursor: pointer;" for="geminiApiUseInteractions">
-                Использовать Interactions API
+          <!-- БЛОК 1: ПРОТОКОЛ -->
+          <div class="settings-group">
+            <h3 class="settings-group-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+              Параметры протокола
+            </h3>
+
+            <div class="settings-card">
+              <div class="settings-card-info">
+                <label class="settings-card-label" for="geminiApiUseInteractions">
+                  Использовать Interactions API
+                </label>
+                <p class="settings-card-desc">
+                  Переключает маршрут на <code>/v1beta/interactions</code> (нужно для Gemini 3.7). При выключении — классический <code>generateContent</code>.
+                </p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="geminiApiUseInteractions">
+                <span class="slider"></span>
               </label>
-              <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5;">
-                Переключает маршрут на <code>/v1beta/interactions</code> (обязательно для Gemini 3.7). <br>Если выключено — использует классический <code>generateContent</code> (для 3.0 / 3.1 / 1.5).
-              </p>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="geminiApiUseInteractions">
-              <span class="slider"></span>
-            </label>
           </div>
 
-          <!-- Заготовка под будущие 1000 настроек -->
+          <div class="settings-divider"></div>
+
+          <!-- БЛОК 2: SAFETY SETTINGS -->
+          <div class="settings-group">
+            <div class="settings-card" style="margin-bottom: 12px; background: transparent; border: none; padding: 0;">
+              <div class="settings-card-info">
+                <h3 class="settings-group-title" style="margin-bottom: 4px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--success);">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                  Safety Settings (Обход цензуры)
+                </h3>
+                <p class="settings-card-desc">
+                  Принудительно передавать выбранные фильтры со значением <code>OFF</code>
+                </p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="geminiApiSendSafety" onchange="const g = document.getElementById('geminiApiSafetyGrid'); if(g){ g.style.opacity = this.checked ? '1' : '0.35'; g.style.pointerEvents = this.checked ? 'auto' : 'none'; }">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- Сетка фильтров с тултипами -->
+            <div id="geminiApiSafetyGrid" class="safety-grid">
+
+              <!-- 1. Harassment -->
+              <label class="safety-chip" data-tooltip="Оскорбления, буллинг, нападки и негативные комментарии в адрес личности.">
+                <div class="safety-chip-content">
+                  <input type="checkbox" id="geminiApiSafeHarassment">
+                  <span>Harassment</span>
+                  <svg class="safety-info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+              </label>
+
+              <!-- 2. Hate Speech -->
+              <label class="safety-chip" data-tooltip="Ненормативная лексика, разжигание ненависти и дискриминационные высказывания.">
+                <div class="safety-chip-content">
+                  <input type="checkbox" id="geminiApiSafeHate">
+                  <span>Hate Speech</span>
+                  <svg class="safety-info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+              </label>
+
+              <!-- 3. Sexually Explicit -->
+              <label class="safety-chip" data-tooltip="Упоминания сексуальных действий, пошлый, эротический и 18+ контент.">
+                <div class="safety-chip-content">
+                  <input type="checkbox" id="geminiApiSafeSex">
+                  <span>Sexually Explicit</span>
+                  <svg class="safety-info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+              </label>
+
+              <!-- 4. Dangerous Content -->
+              <label class="safety-chip" data-tooltip="Насилие, поощрение вреда здоровью и инструкции по опасным действиям.">
+                <div class="safety-chip-content">
+                  <input type="checkbox" id="geminiApiSafeDanger">
+                  <span>Dangerous Content</span>
+                  <svg class="safety-info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+              </label>
+
+              <!-- 5. Civic Integrity (Advanced) -->
+              <label class="safety-chip" data-tooltip="Политическая цензура, процессы выборов и социально-гражданские темы.">
+                <div class="safety-chip-content">
+                  <input type="checkbox" id="geminiApiSafeCivic">
+                  <span>Civic Integrity</span>
+                  <svg class="safety-info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+                <span class="badge-adv">ADV</span>
+              </label>
+
+              <!-- 6. Jailbreak (Advanced) -->
+              <label class="safety-chip" data-tooltip="Фильтр попыток взлома промпта, обхода системных ограничений и инъекций.">
+                <div class="safety-chip-content">
+                  <input type="checkbox" id="geminiApiSafeJailbreak">
+                  <span>Jailbreak Filter</span>
+                  <svg class="safety-info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+                <span class="badge-adv">ADV</span>
+              </label>
+
+            </div>
+          </div>
 
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
-          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 20px;" onclick="window.app.accounts.saveProviderSettings('gemini_api')">Сохранить настройки</button>
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 24px;" onclick="window.app.accounts.saveProviderSettings('gemini_api', event)">Сохранить настройки</button>
         </div>
       </div>
 

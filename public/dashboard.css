@@ -433,44 +433,45 @@
  }
 
  /* Toast */
-.toast {
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    /* По умолчанию делаем зеленым, если класс не передан */
-    background: var(--success);
-    color: white;
-    padding: 14px 24px;
-    border-radius: 10px;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transform: translateY(150%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s, box-shadow 0.3s;
-    z-index: 1000;
-    box-shadow: 0 10px 30px var(--success-glow);
-}
+ .toast {
+     position: fixed;
+     bottom: 30px;
+     right: 30px;
+     /* По умолчанию делаем зеленым, если класс не передан */
+     background: var(--success);
+     color: white;
+     padding: 14px 24px;
+     border-radius: 10px;
+     font-weight: 500;
+     display: flex;
+     align-items: center;
+     gap: 10px;
+     transform: translateY(150%);
+     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s, box-shadow 0.3s;
+     z-index: 1000;
+     box-shadow: 0 10px 30px var(--success-glow);
+ }
 
-.toast.show {
-    transform: translateY(0);
-}
+ .toast.show {
+     transform: translateY(0);
+ }
 
-/* Модификаторы цветов */
-.toast.success {
-    background: var(--success);
-    box-shadow: 0 10px 30px var(--success-glow);
-}
+ /* Модификаторы цветов */
+ .toast.success {
+     background: var(--success);
+     box-shadow: 0 10px 30px var(--success-glow);
+ }
 
-.toast.error {
-    background: var(--error);
-    box-shadow: 0 10px 30px var(--error-glow);
-}
+ .toast.error {
+     background: var(--error);
+     box-shadow: 0 10px 30px var(--error-glow);
+ }
 
-.toast.info {
-    background: #3b82f6; /* Синий цвет */
-    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
-}
+ .toast.info {
+     background: #3b82f6;
+     /* Синий цвет */
+     box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+ }
 
  /* Footer */
  .footer {
@@ -1373,4 +1374,229 @@
  #changelogContent::-webkit-scrollbar-track,
  #releasesContent::-webkit-scrollbar-track {
      background: transparent;
+ }
+
+ /* =======================================================
+   --- GEMINI SETTINGS, SAFETY UI, CHECKBOXES & TOOLTIPS --- 
+   ======================================================= */
+
+ .settings-group-title {
+     margin: 0 0 14px 0;
+     font-size: 15px;
+     font-weight: 600;
+     color: var(--text);
+     display: flex;
+     align-items: center;
+     gap: 8px;
+ }
+
+ .settings-group-title svg {
+     color: var(--accent);
+ }
+
+ .settings-card {
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+     background: rgba(255, 255, 255, 0.02);
+     border: 1px solid var(--border);
+     padding: 14px 16px;
+     border-radius: 12px;
+ }
+
+ .settings-card-info {
+     max-width: 80%;
+ }
+
+ .settings-card-label {
+     font-size: 14px;
+     font-weight: 500;
+     color: var(--text);
+     display: block;
+     margin-bottom: 4px;
+     cursor: pointer;
+ }
+
+ .settings-card-desc {
+     font-size: 12px;
+     color: var(--text-muted);
+     margin: 0;
+     line-height: 1.4;
+ }
+
+ .settings-divider {
+     height: 1px;
+     background: var(--border);
+     margin: 6px 0;
+ }
+
+ /* Сетка безопасности */
+ .safety-grid {
+     display: grid;
+     grid-template-columns: 1fr 1fr;
+     gap: 10px;
+     transition: opacity 0.2s ease;
+ }
+
+ /* Сама карточка (чип) */
+ .safety-chip {
+     position: relative;
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
+     padding: 10px 14px;
+     background: rgba(255, 255, 255, 0.02);
+     border: 1px solid var(--border);
+     border-radius: 12px;
+     cursor: pointer;
+     user-select: none;
+     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+ }
+
+ .safety-chip:hover {
+     background: rgba(255, 255, 255, 0.05);
+     border-color: rgba(255, 255, 255, 0.15);
+     transform: translateY(-1px);
+ }
+
+ /* Подсветка всей карточки, если галочка включена */
+ .safety-chip:has(input[type="checkbox"]:checked) {
+     background: rgba(97, 92, 237, 0.08);
+     border-color: rgba(97, 92, 237, 0.35);
+     box-shadow: 0 0 15px rgba(97, 92, 237, 0.12);
+ }
+
+ .safety-chip-content {
+     display: flex;
+     align-items: center;
+     gap: 12px;
+ }
+
+ /* Полный рестайлинг квадратного чекбокса под стиль темы */
+ .safety-chip input[type="checkbox"] {
+     -webkit-appearance: none;
+     appearance: none;
+     width: 18px;
+     height: 18px;
+     margin: 0;
+     cursor: pointer;
+     background: rgba(0, 0, 0, 0.4);
+     border: 1.5px solid rgba(255, 255, 255, 0.2);
+     border-radius: 6px;
+     display: grid;
+     place-content: center;
+     flex-shrink: 0;
+     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+ }
+
+ .safety-chip input[type="checkbox"]:hover {
+     border-color: rgba(255, 255, 255, 0.4);
+ }
+
+ /* Векторная белая галочка внутри чекбокса */
+ .safety-chip input[type="checkbox"]::before {
+     content: "";
+     width: 10px;
+     height: 10px;
+     transform: scale(0);
+     transition: 0.15s transform cubic-bezier(0.34, 1.56, 0.64, 1);
+     background-color: #ffffff;
+     clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+ }
+
+ /* Состояние: галочка включена */
+ .safety-chip input[type="checkbox"]:checked {
+     background: var(--accent);
+     border-color: var(--accent);
+     box-shadow: 0 0 10px rgba(97, 92, 237, 0.5);
+ }
+
+ .safety-chip input[type="checkbox"]:checked::before {
+     transform: scale(1);
+ }
+
+ .safety-chip span {
+     font-size: 13px;
+     font-weight: 500;
+     color: var(--text);
+     transition: color 0.2s;
+ }
+
+ .safety-chip:has(input[type="checkbox"]:checked) span {
+     color: #ffffff;
+ }
+
+ /* Бейдж ADV */
+ .badge-adv {
+     font-size: 10px;
+     background: rgba(245, 158, 11, 0.15);
+     color: #fbbf24;
+     padding: 2px 6px;
+     border-radius: 4px;
+     font-weight: 600;
+     letter-spacing: 0.5px;
+ }
+
+ /* Иконка ? */
+ .safety-info-icon {
+     color: var(--text-muted);
+     opacity: 0.6;
+     display: inline-flex;
+     align-items: center;
+     transition: opacity 0.2s, color 0.2s;
+ }
+
+ .safety-chip:hover .safety-info-icon {
+     opacity: 1;
+     color: var(--accent);
+ }
+
+ /* Тултипы (всплывающие подсказки) */
+ .safety-chip::after {
+     content: attr(data-tooltip);
+     position: absolute;
+     bottom: calc(100% + 8px);
+     left: 50%;
+     transform: translateX(-50%) translateY(4px);
+     background: #18181b;
+     border: 1px solid rgba(255, 255, 255, 0.15);
+     color: #e4e4e7;
+     padding: 8px 12px;
+     font-size: 11px;
+     font-weight: 400;
+     line-height: 1.4;
+     border-radius: 8px;
+     white-space: normal;
+     width: 220px;
+     text-align: center;
+     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
+     pointer-events: none;
+     z-index: 100;
+     opacity: 0;
+     visibility: hidden;
+     transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+ }
+
+ .safety-chip::before {
+     content: '';
+     position: absolute;
+     bottom: calc(100% + 2px);
+     left: 50%;
+     transform: translateX(-50%) translateY(4px);
+     border-width: 6px 6px 0 6px;
+     border-style: solid;
+     border-color: #18181b transparent transparent transparent;
+     z-index: 101;
+     opacity: 0;
+     visibility: hidden;
+     transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+     pointer-events: none;
+ }
+
+ .safety-chip:hover::after,
+ .safety-chip:hover::before {
+     opacity: 1;
+     visibility: visible;
+     transform: translateX(-50%) translateY(0);
  }
