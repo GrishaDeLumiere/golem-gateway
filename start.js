@@ -63,20 +63,25 @@ qwenProvider.setupRoutes(app, PORT);
 geminiProvider.setupRoutes(app, PORT);
 geminiApiProvider.setupRoutes(app, PORT);
 
-// Вспомогательная функция для безопасного извлечения моделей любого формата (строки/объекты/Proxy)
+// Вспомогательная функция: формирует честный OpenAI-список с префиксами в поле "id"
 function extractModels(providerInstance, providerName, prefix) {
     if (!providerInstance || !providerInstance.MODELS) return [];
     try {
         const rawList = Array.from(providerInstance.MODELS || []);
         return rawList.map(m => {
-            const modelId = typeof m === 'string' ? m : (m.id || m.name || '');
+            const rawModelId = typeof m === 'string' ? m : (m.id || m.name || '');
+            const cleanId = rawModelId.replace(/^models\//, '');
+            const fullPrefixedId = `${prefix}/${cleanId}`;
+
             return {
-                id: modelId,
+                id: fullPrefixedId,
+                raw_id: cleanId,
                 object: "model",
+                owned_by: prefix,
                 provider: providerName,
-                prefixId: `${prefix}/${modelId}`
+                prefixId: fullPrefixedId
             };
-        }).filter(m => m.id !== '');
+        }).filter(m => m.raw_id !== '');
     } catch (e) {
         console.error(`[⚠️ Каталог моделей] Ошибка провайдера ${providerName}:`, e.message);
         return [];
