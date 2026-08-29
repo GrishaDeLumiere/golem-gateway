@@ -60,27 +60,60 @@
       <div id="geminiApiSettingsSection" class="animated-view" style="display: none;">
         <div class="gemini-form-container">
 
-          <!-- БЛОК 1: ПРОТОКОЛ -->
+          <!-- БЛОК 1: ПРОТОКОЛ И АГЕНТЫ -->
           <div class="settings-group">
             <h3 class="settings-group-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="16 18 22 12 16 6"></polyline>
                 <polyline points="8 6 2 12 8 18"></polyline>
               </svg>
-              Параметры протокола
+              Параметры протокола и Агентов
             </h3>
 
-            <div class="settings-card">
+            <!-- 1. Interactions API -->
+            <div class="settings-card" style="margin-bottom: 10px;">
               <div class="settings-card-info">
                 <label class="settings-card-label" for="geminiApiUseInteractions">
                   Использовать Interactions API
                 </label>
                 <p class="settings-card-desc">
-                  Переключает маршрут на <code>/v1beta/interactions</code> (нужно для Gemini 3.7). При выключении — классический <code>generateContent</code>.
+                  Маршрут <code>/v1beta/interactions</code> (обязательно для Gemini 3.7+ и Deep Research).
                 </p>
               </div>
               <label class="switch">
                 <input type="checkbox" id="geminiApiUseInteractions">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- 2. Слияние в один шаг (Flatten / Single-Turn) -->
+            <div class="settings-card" style="margin-bottom: 10px;">
+              <div class="settings-card-info">
+                <label class="settings-card-label" for="geminiApiSingleTurn">
+                  Слияние истории в один шаг (Flatten Mode)
+                </label>
+                <p class="settings-card-desc">
+                  Склеивает весь диалог в одно сообщение <code>--- USER / ASSISTANT ---</code>. Предотвращает ошибки 400 Multiturn.
+                </p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="geminiApiSingleTurn">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- 3. Авто-детекция Агентов -->
+            <div class="settings-card">
+              <div class="settings-card-info">
+                <label class="settings-card-label" for="geminiApiAutoAgent">
+                  Авто-роутинг Агентов (Deep Research / Antigravity)
+                </label>
+                <p class="settings-card-desc">
+                  Автоматически подменяет поле <code>model</code> на <code>agent</code> и отключает конфликтующие thinking-параметры.
+                </p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="geminiApiAutoAgent" checked>
                 <span class="slider"></span>
               </label>
             </div>

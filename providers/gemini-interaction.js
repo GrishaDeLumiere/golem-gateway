@@ -75,7 +75,7 @@ function setupRoutes(app, PORT) {
     app.post('/api/gemini_api/accounts', (req, res) => {
         writeDb(req.body);
         const active = getActiveAccount();
-        if (active && active.token) fetchGoogleModels(active.token); // Обновляем кэш при смене ключа
+        if (active && active.token) fetchGoogleModels(active.token);
         res.json({ success: true, db: readDb() });
     });
 }
@@ -95,47 +95,62 @@ async function handleChatCompletion(req, res) {
     }
 
     if (!apiKey) {
-        return res.status(401).json({ error: { message: "API ключ Google не найден." } });
+        return res.status(401).json({ error: { message: "API ключ Google не найден. Добавьте AIzaSy... ключ в пуле аккаунтов." } });
     }
 
     try {
         const openaiReq = req.body;
-        const modelName = openaiReq.model || "gemini-3.7-flash";
+        const rawModel = openaiReq.model || "gemini-3.7-flash";
+        const modelName = rawModel.replace(/^(models\/|gemini-api\/|api\/)/, '');
         const isStreaming = !!openaiReq.stream;
         const isDebug = settings.debugMode;
 
-        // Читаем настройку из Голема (использовать ли Interactions API)
-        const useInteractions = settings.providerSettings?.gemini_api?.useInteractions === true;
+        const geminiApiSet = settings.providerSettings?.gemini_api || {};
+
+        // Авто-детекция агентных моделей (Deep Research, Antigravity)
+        const isAgentModel = modelName.includes('deep-research') || modelName.includes('antigravity');
+
+        // Режим слияния (Flatten): включен пользователем или для агентов
+        const isSingleTurn = geminiApiSet.singleTurn === true || (geminiApiSet.autoAgent !== false && isAgentModel);
+
+        // Использовать Interactions API
+        const useInteractions = geminiApiSet.useInteractions === true || isAgentModel;
 
         let systemText = "";
         const geminiContents = [];
-        let combinedInputText = ""; // Для Interactions API
+        let combinedFlattenText = "";
 
-        for (const msg of openaiReq.messages) {
-            if (msg.role === "system") {
-                systemText += (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)) + "\n";
+        // 1. СБОРКА ИСТОРИИ (FLATTEN ИЛИ MULTITURN)
+        for (const msg of openaiReq.messages || []) {
+            const role = (msg.role || '').toLowerCase();
+            const textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+
+            if (role === "system") {
+                systemText += textContent + "\n\n";
             } else {
-                const isModel = msg.role === 'assistant';
+                const isModel = role === 'assistant';
 
-                // Для Interactions
-                combinedInputText += `${isModel ? 'Assistant' : 'User'}: ${msg.content}\n\n`;
-
-                // Для Standard API
-                geminiContents.push({
-                    role: isModel ? 'model' : 'user',
-                    parts: [{ text: msg.content }]
-                });
+                if (isSingleTurn) {
+                    combinedFlattenText += `\n\n--- ${isModel ? 'ASSISTANT' : 'USER'} ---\n${textContent}`;
+                } else {
+                    geminiContents.push({
+                        role: isModel ? 'model' : 'user',
+                        parts: [{ text: textContent }]
+                    });
+                }
             }
         }
 
-        const payload = {};
-        let endpoint = "";
+        if (isSingleTurn) {
+            geminiContents.push({
+                role: 'user',
+                parts: [{ text: combinedFlattenText.trim() }]
+            });
+        }
 
-        // === СБОРКА SAFETY SETTINGS ===
-        const geminiApiSet = settings.providerSettings?.gemini_api || {};
+        // 2. СБОРКА SAFETY SETTINGS
         const sendSafety = geminiApiSet.sendSafety !== false;
         const safetySettingsArr = [];
-
         if (sendSafety) {
             if (geminiApiSet.safeHarassment !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" });
             if (geminiApiSet.safeHate !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" });
@@ -145,28 +160,45 @@ async function handleChatCompletion(req, res) {
             if (geminiApiSet.safeJailbreak) safetySettingsArr.push({ category: "HARM_CATEGORY_JAILBREAK", threshold: "OFF" });
         }
 
-        // === МАРШРУТИЗАЦИЯ ===
+        const payload = {};
+        let endpoint = "";
+
+        // 3. МАРШРУТИЗАЦИЯ И PAYLOAD
         if (useInteractions) {
             endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions${isStreaming ? '?alt=sse' : ''}`;
-            payload.model = modelName;
-            payload.store = false;
-            payload.input = combinedInputText.trim();
-            if (systemText) payload.system_instruction = systemText.trim();
 
-            // Внедряем настройки безопасности (Interactions использует snake_case)
+            if (isAgentModel && geminiApiSet.autoAgent !== false) {
+                payload.agent = modelName;
+                payload.background = true; // Требование Google для агентов
+                payload.store = true;
+            } else {
+                payload.model = modelName;
+                payload.store = false;
+            }
+
+            payload.input = combinedFlattenText.trim();
+            if (systemText.trim()) payload.system_instruction = systemText.trim();
+
             if (safetySettingsArr.length > 0) payload.safety_settings = safetySettingsArr;
 
-            payload.generation_config = {};
-            if (openaiReq.temperature !== undefined) payload.generation_config.temperature = openaiReq.temperature;
-            if (openaiReq.max_tokens !== undefined) payload.generation_config.max_output_tokens = openaiReq.max_tokens;
-            if (openaiReq.top_p !== undefined) payload.generation_config.top_p = openaiReq.top_p;
+            // generation_config передаем ТОЛЬКО для обычных моделей (для агентов запрещен)
+            if (!isAgentModel) {
+                const genConfig = {};
+                if (openaiReq.temperature !== undefined) genConfig.temperature = openaiReq.temperature;
+                if (openaiReq.max_tokens !== undefined) genConfig.max_output_tokens = openaiReq.max_tokens;
+                if (openaiReq.top_p !== undefined) genConfig.top_p = openaiReq.top_p;
+                genConfig.thinking_summaries = 'auto';
+
+                if (Object.keys(genConfig).length > 0) {
+                    payload.generation_config = genConfig;
+                }
+            }
         } else {
             const action = isStreaming ? "streamGenerateContent?alt=sse" : "generateContent";
             endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:${action}`;
             payload.contents = geminiContents;
-            if (systemText) payload.systemInstruction = { parts: [{ text: systemText.trim() }] };
+            if (systemText.trim()) payload.systemInstruction = { parts: [{ text: systemText.trim() }] };
 
-            // Внедряем настройки безопасности (Standard использует camelCase)
             if (safetySettingsArr.length > 0) payload.safetySettings = safetySettingsArr;
 
             payload.generationConfig = {};
@@ -175,7 +207,7 @@ async function handleChatCompletion(req, res) {
             if (openaiReq.top_p !== undefined) payload.generationConfig.topP = openaiReq.top_p;
         }
 
-        if (isDebug) console.log(`[🚀 Gemini API] Model: ${modelName} | Mode: ${useInteractions ? 'Interactions' : 'Standard'}`);
+        if (isDebug) console.log(`[🚀 Gemini API] ${isAgentModel ? 'Agent' : 'Model'}: ${modelName} | Mode: ${useInteractions ? 'Interactions' : 'Standard'} | Flatten: ${isSingleTurn}`);
 
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -212,21 +244,30 @@ async function handleChatCompletion(req, res) {
                         let deltaText = "";
 
                         if (useInteractions) {
-                            // Парсер Interactions API (output_text)
-                            let acc = data.output_text || "";
-                            if (acc && acc.length > previousTextLength) {
-                                deltaText = acc.substring(previousTextLength);
-                                previousTextLength = acc.length;
+                            // Interactions API парсер (steps / output_text / delta)
+                            if (data.delta?.type === 'text' && data.delta.text) {
+                                deltaText = data.delta.text;
+                            } else if (data.delta?.type === 'thought_summary' && data.delta.text) {
+                                deltaText = data.delta.text;
+                            } else if (data.output_text) {
+                                let acc = data.output_text;
+                                if (acc.length > previousTextLength) {
+                                    deltaText = acc.substring(previousTextLength);
+                                    previousTextLength = acc.length;
+                                }
                             }
                         } else {
-                            // Парсер Standard API (candidates)
+                            // Standard API парсер
                             deltaText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
                         }
 
                         if (deltaText) {
                             res.write(`data: ${JSON.stringify({
-                                id: responseId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000),
-                                model: modelName, choices: [{ index: 0, delta: { content: deltaText }, finish_reason: null }]
+                                id: responseId,
+                                object: "chat.completion.chunk",
+                                created: Math.floor(Date.now() / 1000),
+                                model: rawModel,
+                                choices: [{ index: 0, delta: { content: deltaText }, finish_reason: null }]
                             })}\n\n`);
                         }
                     } catch (e) { }
@@ -239,14 +280,18 @@ async function handleChatCompletion(req, res) {
             let contentText = "";
 
             if (useInteractions) {
-                contentText = data.output_text || "";
+                const outStep = data.steps?.find(s => s.type === 'model_output');
+                contentText = outStep?.content?.map(c => c.text || '').join('') || data.output_text || '';
             } else {
                 contentText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             }
 
             res.json({
-                id: `chatcmpl-${Date.now()}`, object: "chat.completion", created: Math.floor(Date.now() / 1000),
-                model: modelName, choices: [{ index: 0, message: { role: "assistant", content: contentText }, finish_reason: "stop" }]
+                id: `chatcmpl-${Date.now()}`,
+                object: "chat.completion",
+                created: Math.floor(Date.now() / 1000),
+                model: rawModel,
+                choices: [{ index: 0, message: { role: "assistant", content: contentText }, finish_reason: "stop" }]
             });
         }
     } catch (e) {

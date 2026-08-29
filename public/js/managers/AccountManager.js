@@ -257,15 +257,17 @@ export class AccountManager {
             } else if (providerId === 'gemini_api') {
                 if (!settings.providerSettings.gemini_api) settings.providerSettings.gemini_api = {};
 
-                settings.providerSettings.gemini_api.useInteractions = document.getElementById('geminiApiUseInteractions').checked;
+                settings.providerSettings.gemini_api.useInteractions = document.getElementById('geminiApiUseInteractions')?.checked || false;
+                settings.providerSettings.gemini_api.singleTurn = document.getElementById('geminiApiSingleTurn')?.checked || false;
+                settings.providerSettings.gemini_api.autoAgent = document.getElementById('geminiApiAutoAgent')?.checked ?? true;
 
-                settings.providerSettings.gemini_api.sendSafety = document.getElementById('geminiApiSendSafety').checked;
-                settings.providerSettings.gemini_api.safeHarassment = document.getElementById('geminiApiSafeHarassment').checked;
-                settings.providerSettings.gemini_api.safeHate = document.getElementById('geminiApiSafeHate').checked;
-                settings.providerSettings.gemini_api.safeSex = document.getElementById('geminiApiSafeSex').checked;
-                settings.providerSettings.gemini_api.safeDanger = document.getElementById('geminiApiSafeDanger').checked;
-                settings.providerSettings.gemini_api.safeCivic = document.getElementById('geminiApiSafeCivic').checked;
-                settings.providerSettings.gemini_api.safeJailbreak = document.getElementById('geminiApiSafeJailbreak').checked;
+                settings.providerSettings.gemini_api.sendSafety = document.getElementById('geminiApiSendSafety')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeHarassment = document.getElementById('geminiApiSafeHarassment')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeHate = document.getElementById('geminiApiSafeHate')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeSex = document.getElementById('geminiApiSafeSex')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeDanger = document.getElementById('geminiApiSafeDanger')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeCivic = document.getElementById('geminiApiSafeCivic')?.checked || false;
+                settings.providerSettings.gemini_api.safeJailbreak = document.getElementById('geminiApiSafeJailbreak')?.checked || false;
             }
 
             await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
@@ -532,6 +534,9 @@ export class AccountManager {
             document.getElementById('geminiApiSafeDanger').checked = geminiApiSet.safeDanger !== false;
             document.getElementById('geminiApiSafeCivic').checked = geminiApiSet.safeCivic || false;
             document.getElementById('geminiApiSafeJailbreak').checked = geminiApiSet.safeJailbreak || false;
+            document.getElementById('geminiApiUseInteractions').checked = geminiApiSet.useInteractions || false;
+            document.getElementById('geminiApiSingleTurn').checked = geminiApiSet.singleTurn || false;
+            document.getElementById('geminiApiAutoAgent').checked = geminiApiSet.autoAgent !== false;
 
             // Обновляем визуальное состояние сетки
             document.getElementById('geminiApiSafetyGrid').style.opacity = sendSafety.checked ? '1' : '0.4';
