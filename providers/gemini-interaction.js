@@ -182,8 +182,11 @@ async function handleChatCompletion(req, res) {
         // 2. СБОРКА SAFETY SETTINGS
         const sendSafety = geminiApiSet.sendSafety !== false;
         const safetySettingsArr = [];
+
         if (sendSafety) {
-            // Текстовые фильтры (шлём всегда)
+            const isGemma = modelName.toLowerCase().includes('gemma');
+
+            // Текстовые фильтры (едят все модели без исключения)
             if (geminiApiSet.safeHarassment !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" });
             if (geminiApiSet.safeHate !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" });
             if (geminiApiSet.safeSex !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" });
@@ -191,8 +194,8 @@ async function handleChatCompletion(req, res) {
             if (geminiApiSet.safeCivic) safetySettingsArr.push({ category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "OFF" });
             if (geminiApiSet.safeJailbreak) safetySettingsArr.push({ category: "HARM_CATEGORY_JAILBREAK", threshold: "OFF" });
 
-            // Фильтры для КАРТИНОК (шлём ТОЛЬКО если есть картинка в payload)
-            if (hasImages) {
+            // Фильтры для КАРТИНОК шлём ТОЛЬКО если:
+            if (hasImages && !isGemma) {
                 if (geminiApiSet.safeImageHarassment !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_HARASSMENT", threshold: "OFF" });
                 if (geminiApiSet.safeImageHate !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_HATE", threshold: "OFF" });
                 if (geminiApiSet.safeImageSex !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT", threshold: "OFF" });
