@@ -18,13 +18,19 @@ const DEFAULT_SETTINGS = {
         },
         gemini_api: {
             useInteractions: false,
+            singleTurn: false,
+            autoAgent: true,
             sendSafety: true,
             safeHarassment: true,
             safeHate: true,
             safeSex: true,
             safeDanger: true,
             safeCivic: false,
-            safeJailbreak: false
+            safeJailbreak: false,
+            safeImageHarassment: true,
+            safeImageHate: true,
+            safeImageSex: true,
+            safeImageDanger: true
         },
         deepseek: {
             showBrowser: false,

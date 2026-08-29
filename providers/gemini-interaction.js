@@ -119,32 +119,63 @@ async function handleChatCompletion(req, res) {
         let systemText = "";
         const geminiContents = [];
         let combinedFlattenText = "";
+        const combinedFlattenImages = [];
+        let hasImages = false;
 
-        // 1. СБОРКА ИСТОРИИ (FLATTEN ИЛИ MULTITURN)
+        // 1. СБОРКА ИСТОРИИ (FLATTEN ИЛИ MULTITURN) + ПОДДЕРЖКА VISION
         for (const msg of openaiReq.messages || []) {
             const role = (msg.role || '').toLowerCase();
-            const textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+            let textOnly = "";
+            let currentParts = [];
+
+            if (typeof msg.content === 'string') {
+                textOnly = msg.content;
+                currentParts.push({ text: textOnly });
+            } else if (Array.isArray(msg.content)) {
+                for (const item of msg.content) {
+                    if (item.type === 'text') {
+                        textOnly += item.text + "\n";
+                        currentParts.push({ text: item.text });
+                    } else if (item.type === 'image_url' && item.image_url?.url) {
+                        const match = item.image_url.url.match(/^data:(.*?);base64,(.*)$/);
+                        if (match) {
+                            hasImages = true;
+                            currentParts.push({
+                                inlineData: { mimeType: match[1], data: match[2] }
+                            });
+                        }
+                    }
+                }
+            } else {
+                textOnly = JSON.stringify(msg.content);
+                currentParts.push({ text: textOnly });
+            }
 
             if (role === "system") {
-                systemText += textContent + "\n\n";
+                systemText += textOnly + "\n\n";
             } else {
                 const isModel = role === 'assistant';
 
                 if (isSingleTurn) {
-                    combinedFlattenText += `\n\n--- ${isModel ? 'ASSISTANT' : 'USER'} ---\n${textContent}`;
+                    // В режиме Flatten текст сливаем в один, а картинки откладываем
+                    combinedFlattenText += `\n\n--- ${isModel ? 'ASSISTANT' : 'USER'} ---\n${textOnly.trim()}`;
+                    const imagesOnly = currentParts.filter(p => p.inlineData);
+                    combinedFlattenImages.push(...imagesOnly);
                 } else {
                     geminiContents.push({
                         role: isModel ? 'model' : 'user',
-                        parts: [{ text: textContent }]
+                        parts: currentParts
                     });
                 }
             }
         }
 
         if (isSingleTurn) {
+            // Собираем Flatten: текст + все картинки, что были в истории
+            const flattenParts = [{ text: combinedFlattenText.trim() }, ...combinedFlattenImages];
             geminiContents.push({
                 role: 'user',
-                parts: [{ text: combinedFlattenText.trim() }]
+                parts: flattenParts
             });
         }
 
@@ -152,12 +183,21 @@ async function handleChatCompletion(req, res) {
         const sendSafety = geminiApiSet.sendSafety !== false;
         const safetySettingsArr = [];
         if (sendSafety) {
+            // Текстовые фильтры (шлём всегда)
             if (geminiApiSet.safeHarassment !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" });
             if (geminiApiSet.safeHate !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" });
             if (geminiApiSet.safeSex !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" });
             if (geminiApiSet.safeDanger !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" });
             if (geminiApiSet.safeCivic) safetySettingsArr.push({ category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "OFF" });
             if (geminiApiSet.safeJailbreak) safetySettingsArr.push({ category: "HARM_CATEGORY_JAILBREAK", threshold: "OFF" });
+
+            // Фильтры для КАРТИНОК (шлём ТОЛЬКО если есть картинка в payload)
+            if (hasImages) {
+                if (geminiApiSet.safeImageHarassment !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_HARASSMENT", threshold: "OFF" });
+                if (geminiApiSet.safeImageHate !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_HATE", threshold: "OFF" });
+                if (geminiApiSet.safeImageSex !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT", threshold: "OFF" });
+                if (geminiApiSet.safeImageDanger !== false) safetySettingsArr.push({ category: "HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT", threshold: "OFF" });
+            }
         }
 
         const payload = {};

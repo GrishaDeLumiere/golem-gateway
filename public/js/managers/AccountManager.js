@@ -268,6 +268,10 @@ export class AccountManager {
                 settings.providerSettings.gemini_api.safeDanger = document.getElementById('geminiApiSafeDanger')?.checked ?? true;
                 settings.providerSettings.gemini_api.safeCivic = document.getElementById('geminiApiSafeCivic')?.checked || false;
                 settings.providerSettings.gemini_api.safeJailbreak = document.getElementById('geminiApiSafeJailbreak')?.checked || false;
+                settings.providerSettings.gemini_api.safeImageHarassment = document.getElementById('geminiApiSafeImageHarassment')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeImageHate = document.getElementById('geminiApiSafeImageHate')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeImageSex = document.getElementById('geminiApiSafeImageSex')?.checked ?? true;
+                settings.providerSettings.gemini_api.safeImageDanger = document.getElementById('geminiApiSafeImageDanger')?.checked ?? true;
             }
 
             await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
@@ -537,6 +541,10 @@ export class AccountManager {
             document.getElementById('geminiApiUseInteractions').checked = geminiApiSet.useInteractions || false;
             document.getElementById('geminiApiSingleTurn').checked = geminiApiSet.singleTurn || false;
             document.getElementById('geminiApiAutoAgent').checked = geminiApiSet.autoAgent !== false;
+            document.getElementById('geminiApiSafeImageHarassment').checked = geminiApiSet.safeImageHarassment !== false;
+            document.getElementById('geminiApiSafeImageHate').checked = geminiApiSet.safeImageHate !== false;
+            document.getElementById('geminiApiSafeImageSex').checked = geminiApiSet.safeImageSex !== false;
+            document.getElementById('geminiApiSafeImageDanger').checked = geminiApiSet.safeImageDanger !== false;
 
             // Обновляем визуальное состояние сетки
             document.getElementById('geminiApiSafetyGrid').style.opacity = sendSafety.checked ? '1' : '0.4';
