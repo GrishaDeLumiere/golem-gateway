@@ -35,6 +35,37 @@ function getActiveAccount() {
     return db.accounts[db.active] || db.accounts[0];
 }
 
+function getCandidateAccounts(modelName) {
+    const db = readDb();
+    if (!db.accounts || db.accounts.length === 0) return [];
+
+    let poolIndices = [];
+    const routing = db.routing || {};
+
+    // 1. Проверяем, есть ли жесткое правило для конкретной модели (например, gemma-2-27b-it)
+    if (routing.rules && routing.rules[modelName] && routing.rules[modelName].length > 0) {
+        poolIndices = routing.rules[modelName];
+    }
+    // 2. Иначе используем глобальный пул ротации
+    else if (routing.enabledKeys && routing.enabledKeys.length > 0) {
+        poolIndices = routing.enabledKeys;
+    }
+    // 3. Фолбэк на старую систему (активный аккаунт)
+    else {
+        poolIndices = [db.active || 0];
+    }
+
+    let pool = poolIndices.map(i => db.accounts[i]).filter(a => a && a.token);
+    if (pool.length === 0) pool = [db.accounts[0]]; // Защита от пустых пулов
+
+    // Круговая ротация (Round-Robin) через глобальную переменную
+    const lastIdx = global.golemGeminiRrIndex || 0;
+    global.golemGeminiRrIndex = (lastIdx + 1) % pool.length;
+
+    // Сдвигаем массив так, чтобы нужный ключ был первым, а остальные шли как запасные (для авто-ретрая)
+    return [...pool.slice(global.golemGeminiRrIndex), ...pool.slice(0, global.golemGeminiRrIndex)];
+}
+
 async function fetchGoogleModels(apiKey) {
     if (!apiKey) return;
     if (Date.now() - lastModelFetch < 3600000 && cachedModels.length > 0) return; // Кэш 1 час
@@ -87,15 +118,20 @@ async function handleChatCompletion(req, res) {
 
     const authHeader = req.headers.authorization || "";
     const clientKey = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    let candidates = [];
+    const rawModel = req.body.model || "gemini-3.7-flash";
+    const modelName = rawModel.replace(/^(models\/|gemini-api\/|api\/)/, '');
+
     if (clientKey.startsWith("AIzaSy")) {
-        apiKey = clientKey;
+        candidates = [{ name: "Custom Client Key", token: clientKey }];
     } else {
-        const activeAcc = getActiveAccount();
-        if (activeAcc && activeAcc.token) apiKey = activeAcc.token;
+        // Запрашиваем умный пул ключей
+        candidates = getCandidateAccounts(modelName);
     }
 
-    if (!apiKey) {
-        return res.status(401).json({ error: { message: "API ключ Google не найден. Добавьте AIzaSy... ключ в пуле аккаунтов." } });
+    if (candidates.length === 0) {
+        return res.status(401).json({ error: { message: "API ключи не настроены. Добавьте ключи в пуле аккаунтов." } });
     }
 
     try {
@@ -252,13 +288,44 @@ async function handleChatCompletion(req, res) {
 
         if (isDebug) console.log(`[🚀 Gemini API] ${isAgentModel ? 'Agent' : 'Model'}: ${modelName} | Mode: ${useInteractions ? 'Interactions' : 'Standard'} | Flatten: ${isSingleTurn}`);
 
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+        let response = null;
+        let usedKeyName = "";
 
-        if (!response.ok) throw new Error(`Google API Error ${response.status}: ${await response.text()}`);
+        // Бежим по собранному пулу ключей
+        for (const account of candidates) {
+            if (!account.token) continue;
+
+            if (isDebug) console.log(`[🚀 Gemini API] Отправка через ключ: ${account.name} (Модель: ${modelName})`);
+
+            response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { "x-goog-api-key": account.token, "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            // САМОЕ ГЛАВНОЕ: Если поймали лимит или перегруз — бесшовно берем следующий ключ
+            if (response.status === 429) {
+                console.warn(`[⚠️ Gemini API] Ключ "${account.name}" словил лимит (429). Переключаем на следующий...`);
+                continue;
+            }
+            if (response.status === 503) {
+                console.warn(`[⚠️ Gemini API] Сервера Google перегружены (503) на ключе "${account.name}". Пробуем другой...`);
+                continue;
+            }
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Google API Error ${response.status}: ${errText}`);
+            }
+
+            usedKeyName = account.name;
+            break; // Успех! Выходим из цикла.
+        }
+
+        if (!response || !response.ok) {
+            throw new Error("❌ Все доступные ключи в ротации исчерпали лимиты (429) или недоступны.");
+        }
+        if (isDebug) console.log(`[✅ Gemini API] Запрос успешно обработан ключом: ${usedKeyName}`);
 
         if (isStreaming) {
             res.setHeader('Content-Type', 'text/event-stream');

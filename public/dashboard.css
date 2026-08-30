@@ -1360,17 +1360,24 @@
      }
  }
 
+ .custom-scroll::-webkit-scrollbar,
  #changelogContent::-webkit-scrollbar,
  #releasesContent::-webkit-scrollbar {
      width: 6px;
  }
 
+ .custom-scroll::-webkit-scrollbar-thumb,
  #changelogContent::-webkit-scrollbar-thumb,
  #releasesContent::-webkit-scrollbar-thumb {
-     background: rgba(255, 255, 255, 0.1);
+     background: rgba(255, 255, 255, 0.15);
      border-radius: 10px;
  }
 
+ .custom-scroll::-webkit-scrollbar-thumb:hover {
+     background: rgba(255, 255, 255, 0.25);
+ }
+
+ .custom-scroll::-webkit-scrollbar-track,
  #changelogContent::-webkit-scrollbar-track,
  #releasesContent::-webkit-scrollbar-track {
      background: transparent;

@@ -13,6 +13,7 @@
     <!-- Навигация (AAA-табы) -->
     <div class="gemini-tabs" id="geminiApiTabsContainer">
       <button class="gemini-tab-btn active" onclick="switchGeminiApiTab('accounts')">Пул ключей</button>
+      <button class="gemini-tab-btn" onclick="switchGeminiApiTab('routing')">Балансировка</button>
       <button class="gemini-tab-btn" onclick="switchGeminiApiTab('settings')">Настройки</button>
     </div>
 
@@ -52,6 +53,56 @@
           </button>
         </div>
         <div id="geminiApiAccountsList" style="max-height: 250px; overflow-y: auto; padding-right: 4px;"></div>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- ЭКРАН 1.5: УМНАЯ БАЛАНСИРОВКА             -->
+      <!-- ========================================= -->
+      <div id="geminiApiRoutingSection" class="animated-view custom-scroll" style="display: none; max-height: 420px; overflow-y: auto; padding-right: 10px; margin-right: -4px;">
+
+        <div class="guide-banner" style="margin-bottom: 24px;">
+          <div class="guide-banner-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+          </div>
+          <div class="guide-banner-text">
+            <strong style="color: #fff; font-size: 14px; display: block; margin-bottom: 6px;">Круговая ротация (Round-Robin)</strong>
+            Шлюз автоматически распределяет запросы между выбранными ключами. Если ключ ловит лимит (429), запрос <b>моментально и незаметно</b> отправляется через следующий.
+          </div>
+        </div>
+
+        <div class="gemini-form-container" style="margin-bottom: 16px;">
+          <div class="settings-group-title">Глобальный пул ротации</div>
+          <p class="settings-card-desc" style="margin-bottom: 16px;">Кликните на ключи, которые будут делить нагрузку по умолчанию для всех моделей.</p>
+          <div id="geminiApiGlobalPoolList" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <!-- Рендерится из JS -->
+          </div>
+        </div>
+
+        <div class="gemini-form-container">
+          <div class="settings-group-title">Правила для конкретных моделей</div>
+          <p class="settings-card-desc" style="margin-bottom: 16px;">Создайте правило, чтобы направить тяжелую модель на определенные ключи.</p>
+
+          <div id="geminiApiRulesList" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Рендерится из JS -->
+          </div>
+
+          <!-- Блок добавления нового правила -->
+          <div style="margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 20px;">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <input type="text" id="newRuleModelName" class="modern-input" placeholder="Например: gemma-2-27b-it" autocomplete="off" spellcheck="false" style="flex: 1; margin: 0;">
+              <button class="btn btn-primary-solid" style="width: auto; padding: 12px 20px; flex-shrink: 0;" onclick="window.app.accounts.addGeminiApiRule()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Добавить</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ========================================= -->

@@ -507,10 +507,14 @@ export class AccountManager {
 
         if (tab === 'accounts') {
             tabs[0].classList.add('active');
-            this.toggleView('geminiApiAccountsSection', ['geminiApiSettingsSection', 'geminiApiEditorSection']);
-        } else if (tab === 'settings') {
+            this.toggleView('geminiApiAccountsSection', ['geminiApiSettingsSection', 'geminiApiEditorSection', 'geminiApiRoutingSection']);
+        } else if (tab === 'routing') {
             tabs[1].classList.add('active');
-            this.toggleView('geminiApiSettingsSection', ['geminiApiAccountsSection', 'geminiApiEditorSection']);
+            this.toggleView('geminiApiRoutingSection', ['geminiApiAccountsSection', 'geminiApiSettingsSection', 'geminiApiEditorSection']);
+            this.renderGeminiApiRouting();
+        } else if (tab === 'settings') {
+            tabs[2].classList.add('active');
+            this.toggleView('geminiApiSettingsSection', ['geminiApiAccountsSection', 'geminiApiEditorSection', 'geminiApiRoutingSection']);
         }
     }
 
@@ -787,6 +791,133 @@ export class AccountManager {
         await fetch('/api/deepseek/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.deepseekDb) });
         this.renderDeepSeekAccounts();
         window.app.refreshUI();
+    }
+
+    // --- ЛОГИКА УМНОЙ БАЛАНСИРОВКИ (GEMINI API) ---
+    async saveGeminiApiDb() {
+        await fetch('/api/gemini_api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.geminiApiDb) });
+    }
+
+    async toggleGeminiApiPoolKey(index) {
+        if (!this.geminiApiDb.routing) this.geminiApiDb.routing = { enabledKeys: [], rules: {} };
+        if (!this.geminiApiDb.routing.enabledKeys) this.geminiApiDb.routing.enabledKeys = [];
+
+        const idx = this.geminiApiDb.routing.enabledKeys.indexOf(index);
+        if (idx > -1) this.geminiApiDb.routing.enabledKeys.splice(idx, 1);
+        else this.geminiApiDb.routing.enabledKeys.push(index);
+
+        await this.saveGeminiApiDb();
+        this.renderGeminiApiRouting();
+    }
+
+    async addGeminiApiRule() {
+        const model = document.getElementById('newRuleModelName').value.trim();
+        if (!model) return;
+
+        if (!this.geminiApiDb.routing) this.geminiApiDb.routing = { enabledKeys: [], rules: {} };
+        if (!this.geminiApiDb.routing.rules) this.geminiApiDb.routing.rules = {};
+
+        if (!this.geminiApiDb.routing.rules[model]) {
+            this.geminiApiDb.routing.rules[model] = [];
+        }
+
+        document.getElementById('newRuleModelName').value = '';
+        await this.saveGeminiApiDb();
+        this.renderGeminiApiRouting();
+    }
+
+    async toggleGeminiApiRuleKey(model, index) {
+        const rule = this.geminiApiDb.routing.rules[model];
+        const idx = rule.indexOf(index);
+        if (idx > -1) rule.splice(idx, 1);
+        else rule.push(index);
+
+        await this.saveGeminiApiDb();
+        this.renderGeminiApiRouting();
+    }
+
+    async deleteGeminiApiRule(model) {
+        delete this.geminiApiDb.routing.rules[model];
+        await this.saveGeminiApiDb();
+        this.renderGeminiApiRouting();
+    }
+
+    renderGeminiApiRouting() {
+        const db = this.geminiApiDb;
+        if (!db.routing) db.routing = { enabledKeys: [], rules: {} };
+        if (!db.routing.enabledKeys) db.routing.enabledKeys = [];
+        if (!db.routing.rules) db.routing.rules = {};
+
+        // 1. Отрисовка Глобального Пула
+        const poolList = document.getElementById('geminiApiGlobalPoolList');
+        poolList.innerHTML = db.accounts.map((acc, i) => {
+            const orderIndex = db.routing.enabledKeys.indexOf(i);
+            const isActive = orderIndex > -1;
+
+            if (isActive) {
+                return `
+                <div class="cat-chip active" style="user-select: none; padding: 6px 14px 6px 8px; display: flex; align-items: center; gap: 8px; background: rgba(97, 92, 237, 0.2); border-color: var(--accent); color: #fff; cursor: pointer; transition: 0.2s;" onclick="window.app.accounts.toggleGeminiApiPoolKey(${i})">
+                    <span style="background: var(--accent); color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">${orderIndex + 1}</span>
+                    ${acc.name}
+                </div>`;
+            } else {
+                return `
+                <div class="cat-chip" style="user-select: none; padding: 6px 14px; border: 1px dashed rgba(255,255,255,0.2); opacity: 0.6; color: var(--text-muted); cursor: pointer; transition: 0.2s;" onclick="window.app.accounts.toggleGeminiApiPoolKey(${i})" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+                    + ${acc.name}
+                </div>`;
+            }
+        }).join('') || '<div style="color: var(--text-muted); font-size: 13px;">Ключи не найдены. Добавьте их во вкладке "Пул ключей".</div>';
+
+        // 2. Отрисовка Спец. Правил для Моделей
+        const rulesList = document.getElementById('geminiApiRulesList');
+        const rulesHtml = Object.keys(db.routing.rules).map(model => {
+            const keys = db.routing.rules[model];
+            const keysHtml = db.accounts.map((acc, i) => {
+                const orderIndex = keys.indexOf(i);
+                const isSelected = orderIndex > -1;
+
+                if (isSelected) {
+                    return `
+                    <div class="cat-chip active" style="user-select: none; padding: 4px 12px 4px 6px; font-size: 12px; display: flex; align-items: center; gap: 6px; background: rgba(97, 92, 237, 0.2); border-color: var(--accent); color: #fff; cursor: pointer;" onclick="window.app.accounts.toggleGeminiApiRuleKey('${model}', ${i})">
+                        <span style="background: var(--accent); color: white; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">${orderIndex + 1}</span>
+                        ${acc.name}
+                    </div>`;
+                } else {
+                    return `
+                    <div class="cat-chip" style="user-select: none; padding: 4px 12px; font-size: 12px; border: 1px dashed rgba(255,255,255,0.2); opacity: 0.5; color: var(--text-muted); cursor: pointer;" onclick="window.app.accounts.toggleGeminiApiRuleKey('${model}', ${i})" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+                        + ${acc.name}
+                    </div>`;
+                }
+            }).join('');
+
+            return `
+            <div class="settings-card" style="align-items: flex-start; flex-direction: column; gap: 10px; background: rgba(0,0,0,0.25); border-color: rgba(255,255,255,0.05); padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <strong style="color: var(--text); font-family: monospace; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+                            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                            <polyline points="2 17 12 22 22 17"></polyline>
+                            <polyline points="2 12 12 17 22 12"></polyline>
+                        </svg>
+                        ${model}
+                    </strong>
+                    <button class="btn-icon" style="width: 28px; height: 28px; padding: 0; color: var(--text-muted); background: rgba(255,255,255,0.03);" onclick="window.app.accounts.deleteGeminiApiRule('${model}')" title="Удалить правило">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                
+                <!-- Подсказка для пользователя -->
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 2px;">
+                    Кликайте по ключам ниже, чтобы задать порядок ротации (1 ➔ 2 ➔ 3):
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    ${keysHtml || '<span style="color: var(--text-muted); font-size: 12px;">Нет доступных ключей</span>'}
+                </div>
+            </div>`;
+        }).join('');
+
+        rulesList.innerHTML = rulesHtml || '<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 16px 0; border: 1px dashed var(--border); border-radius: 10px;">Специфичных правил пока нет. Введите название модели ниже.</div>';
     }
 
 }
