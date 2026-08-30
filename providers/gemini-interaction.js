@@ -269,7 +269,7 @@ async function handleChatCompletion(req, res) {
             }];
 
             if (systemText.trim()) {
-                payload.system_instruction = { parts: [{ text: systemText.trim() }] };
+                payload.system_instruction = systemText.trim();
             }
 
             if (safetySettingsArr.length > 0) payload.safety_settings = safetySettingsArr;
