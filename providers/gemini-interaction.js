@@ -114,6 +114,17 @@ function setupRoutes(app, PORT) {
 // --- ЛОГИКА ИНФЕРЕНСА ---
 async function handleChatCompletion(req, res) {
     const settings = getSettings();
+
+    const controller = new AbortController();
+
+    req.on('aborted', () => {
+        controller.abort();
+    });
+
+    res.on('close', () => {
+        controller.abort();
+    });
+
     let apiKey = null;
 
     const authHeader = req.headers.authorization || "";
@@ -249,7 +260,17 @@ async function handleChatCompletion(req, res) {
             payload.model = modelName;
             payload.store = false;
 
-            const inputParts = [{ type: 'text', text: combinedFlattenText.trim() }];
+            let finalText = combinedFlattenText.trim();
+
+            if (systemText.trim()) {
+                if (isAgentModel) {
+                    finalText = `[SYSTEM INSTRUCTIONS]\n${systemText.trim()}\n\n${finalText}`;
+                } else {
+                    payload.system_instruction = systemText.trim();
+                }
+            }
+
+            const inputParts = [{ type: 'text', text: finalText }];
 
             if (combinedFlattenImages.length > 0) {
                 for (const img of combinedFlattenImages) {
@@ -267,10 +288,6 @@ async function handleChatCompletion(req, res) {
                 type: 'user_input',
                 content: inputParts
             }];
-
-            if (systemText.trim()) {
-                payload.system_instruction = systemText.trim();
-            }
 
             if (safetySettingsArr.length > 0) payload.safety_settings = safetySettingsArr;
 
@@ -316,7 +333,8 @@ async function handleChatCompletion(req, res) {
             response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { "x-goog-api-key": account.token, "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: controller.signal
             });
 
             // САМОЕ ГЛАВНОЕ: Если поймали лимит или перегруз — бесшовно берем следующий ключ
@@ -421,6 +439,11 @@ async function handleChatCompletion(req, res) {
             });
         }
     } catch (e) {
+        if (e.name === 'AbortError') {
+            const isDebug = settings.debugMode;
+            if (isDebug) console.log(`[🛑 Gemini API] Клиент нажал СТОП. Запрос к Google успешно прерван.`);
+            return;
+        }
         console.error(`[❌ Gemini API] Ошибка:`, e.message);
         if (!res.headersSent) res.status(500).json({ error: { message: e.message } });
     }
