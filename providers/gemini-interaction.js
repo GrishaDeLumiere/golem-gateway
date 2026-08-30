@@ -246,32 +246,48 @@ async function handleChatCompletion(req, res) {
         if (useInteractions) {
             endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions${isStreaming ? '?alt=sse' : ''}`;
 
-            if (isAgentModel && geminiApiSet.autoAgent !== false) {
-                payload.agent = modelName;
-                payload.background = true; // Требование Google для агентов
-                payload.store = true;
-            } else {
-                payload.model = modelName;
-                payload.store = false;
+            payload.model = modelName;
+            payload.store = false;
+
+            const inputParts = [{ type: 'text', text: combinedFlattenText.trim() }];
+
+            if (combinedFlattenImages.length > 0) {
+                for (const img of combinedFlattenImages) {
+                    if (img.inlineData) {
+                        inputParts.push({
+                            type: 'image',
+                            mime_type: img.inlineData.mimeType,
+                            data: img.inlineData.data
+                        });
+                    }
+                }
             }
 
-            payload.input = combinedFlattenText.trim();
-            if (systemText.trim()) payload.system_instruction = systemText.trim();
+            payload.input = [{
+                type: 'user_input',
+                content: inputParts
+            }];
+
+            if (systemText.trim()) {
+                payload.system_instruction = { parts: [{ text: systemText.trim() }] };
+            }
 
             if (safetySettingsArr.length > 0) payload.safety_settings = safetySettingsArr;
 
-            // generation_config передаем ТОЛЬКО для обычных моделей (для агентов запрещен)
-            if (!isAgentModel) {
-                const genConfig = {};
-                if (openaiReq.temperature !== undefined) genConfig.temperature = openaiReq.temperature;
-                if (openaiReq.max_tokens !== undefined) genConfig.max_output_tokens = openaiReq.max_tokens;
-                if (openaiReq.top_p !== undefined) genConfig.top_p = openaiReq.top_p;
-                genConfig.thinking_summaries = 'auto';
+            const genConfig = {};
+            if (openaiReq.temperature !== undefined) genConfig.temperature = openaiReq.temperature;
+            if (openaiReq.max_tokens !== undefined) genConfig.max_output_tokens = openaiReq.max_tokens;
+            if (openaiReq.top_p !== undefined) genConfig.top_p = openaiReq.top_p;
 
-                if (Object.keys(genConfig).length > 0) {
-                    payload.generation_config = genConfig;
-                }
+            // thinking_summaries оставляем только для обычных моделей
+            if (!isAgentModel) {
+                genConfig.thinking_summaries = 'auto';
             }
+
+            if (Object.keys(genConfig).length > 0) {
+                payload.generation_config = genConfig;
+            }
+
         } else {
             const action = isStreaming ? "streamGenerateContent?alt=sse" : "generateContent";
             endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:${action}`;
