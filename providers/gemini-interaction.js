@@ -257,16 +257,52 @@ async function handleChatCompletion(req, res) {
         if (useInteractions) {
             endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions${isStreaming ? '?alt=sse' : ''}`;
 
-            payload.model = modelName;
-            payload.store = false;
+            // АГЕНТАМ ОБЯЗАТЕЛЕН store: true, ОБЫЧНЫМ МОДЕЛЯМ - false
+            payload.store = isAgentModel ? true : false;
 
             let finalText = combinedFlattenText.trim();
 
-            if (systemText.trim()) {
-                if (isAgentModel) {
-                    finalText = `[SYSTEM INSTRUCTIONS]\n${systemText.trim()}\n\n${finalText}`;
+            if (isAgentModel) {
+                // 1. ИДЕНТИФИКАТОР АГЕНТА
+                payload.agent = modelName;
+
+                // 2. КОНФИГ АГЕНТА
+                payload.agent_config = {
+                    type: "antigravity"
+                };
+                if (openaiReq.max_tokens !== undefined) {
+                    payload.agent_config.max_total_tokens = openaiReq.max_tokens;
+                }
+
+                // 3. МОНТИРОВАНИЕ СИСТЕМНОГО ПРОМПТА В ПЕСОЧНИЦУ
+                if (systemText.trim()) {
+                    payload.environment = {
+                        type: "remote",
+                        sources: [{
+                            type: "inline",
+                            target: ".agents/AGENTS.md",
+                            content: systemText.trim()
+                        }]
+                    };
                 } else {
+                    payload.environment = "remote";
+                }
+            } else {
+                // ДЛЯ СТАНДАРТНЫХ МОДЕЛЕЙ (Gemini 3.7 Flash и т.д.)
+                payload.model = modelName;
+
+                if (systemText.trim()) {
                     payload.system_instruction = systemText.trim();
+                }
+
+                const genConfig = {};
+                if (openaiReq.temperature !== undefined) genConfig.temperature = openaiReq.temperature;
+                if (openaiReq.max_tokens !== undefined) genConfig.max_output_tokens = openaiReq.max_tokens;
+                if (openaiReq.top_p !== undefined) genConfig.top_p = openaiReq.top_p;
+                genConfig.thinking_summaries = 'auto';
+
+                if (Object.keys(genConfig).length > 0) {
+                    payload.generation_config = genConfig;
                 }
             }
 
@@ -290,20 +326,6 @@ async function handleChatCompletion(req, res) {
             }];
 
             if (safetySettingsArr.length > 0) payload.safety_settings = safetySettingsArr;
-
-            const genConfig = {};
-            if (openaiReq.temperature !== undefined) genConfig.temperature = openaiReq.temperature;
-            if (openaiReq.max_tokens !== undefined) genConfig.max_output_tokens = openaiReq.max_tokens;
-            if (openaiReq.top_p !== undefined) genConfig.top_p = openaiReq.top_p;
-
-            // thinking_summaries оставляем только для обычных моделей
-            if (!isAgentModel) {
-                genConfig.thinking_summaries = 'auto';
-            }
-
-            if (Object.keys(genConfig).length > 0) {
-                payload.generation_config = genConfig;
-            }
 
         } else {
             const action = isStreaming ? "streamGenerateContent?alt=sse" : "generateContent";
@@ -337,7 +359,6 @@ async function handleChatCompletion(req, res) {
                 signal: controller.signal
             });
 
-            // САМОЕ ГЛАВНОЕ: Если поймали лимит или перегруз — бесшовно берем следующий ключ
             if (response.status === 429) {
                 console.warn(`[⚠️ Gemini API] Ключ "${account.name}" словил лимит (429). Переключаем на следующий...`);
                 continue;
