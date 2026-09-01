@@ -548,6 +548,7 @@ async function handleChatCompletion(req, res) {
     let searchResults = [];
     let isThinkingContext = false;
     let fullAnswer = '';
+
     const tempUploadedFiles = [];
 
     // 💉 ОРИГИНАЛЬНЫЙ ПАРСЕР ЧАНКОВ (НЕ ТРОГАТЬ)
@@ -568,94 +569,79 @@ async function handleChatCompletion(req, res) {
             try {
                 const data = JSON.parse(cleanLine);
                 let chunkDelta = '';
+                const shouldSendThink = typeof sendThink !== 'undefined' ? sendThink : true;
 
                 // 1. Ошибки сервера
                 if (data?.custom_error) {
                     let errStr = data.custom_error;
-                    try {
-                        const j = JSON.parse(errStr);
-                        errStr = j.message || j.error?.message || errStr;
-                    } catch (e) { }
+                    try { const j = JSON.parse(errStr); errStr = j.message || j.error?.message || errStr; } catch (e) { }
                     chunkDelta += `\n❌ [СЕРВЕР DEEPSEEK УПАЛ]: ${errStr}\nСервера сейчас под шквалом запросов.`;
                     isFinished = true;
                 }
 
-                // 2. Статусы завершения
                 if (data?.p === 'response/status' && data?.v === 'FINISHED') isFinished = true;
                 if (data?.quasi_status === 'FINISHED') isFinished = true;
 
-                // 🛠️ ФУНКЦИИ-ПОМОЩНИКИ (СТРОГАЯ ЛОГИКА)
+                if (data?.o === 'SET' && typeof data?.p === 'string' && data.p.includes('/content')) {
+                    continue;
+                }
 
-                // Безопасное добавление текста
-                const handleText = (text) => {
-                    if (typeof text !== 'string') return;
-                    if (!isThinkingContext || sendThink) {
-                        chunkDelta += text;
-                    }
-                };
-
-                // Безопасное переключение контекста (THINK <-> RESPONSE)
-                const handleFrag = (frag) => {
-                    if (frag.type === 'THINK') {
-                        if (!isThinkingContext) {
-                            isThinkingContext = true;
-                            if (sendThink) chunkDelta += '<think>\n';
-                        }
-                        if (frag.content) handleText(frag.content);
-                    } else if (frag.type === 'RESPONSE') {
-                        if (isThinkingContext) {
-                            isThinkingContext = false;
-                            if (sendThink) chunkDelta += '\n\n</think>\n\n';
-                        }
-                        if (frag.content) handleText(frag.content);
-                    }
-                };
-
-                // Обработчик команд (JSON Patch)
-                const processOperation = (op) => {
-                    // 🚫 ГЛАВНАЯ ЗАЩИТА ОТ КАШИ: Игнорируем команды "SET" (полная перезапись)
-                    if (op.o === 'SET') return;
-
-                    // Создание новых блоков ответа
-                    if (op.p === 'response/fragments' && op.o === 'APPEND' && Array.isArray(op.v)) {
-                        for (const f of op.v) handleFrag(f);
-                    }
-                    // Добавление новых слов
-                    else if (typeof op.p === 'string' && op.p.endsWith('/content') && (op.o === 'APPEND' || !op.o) && typeof op.v === 'string') {
-                        handleText(op.v);
-                    }
-                    // Конец генерации внутри пакета
-                    else if (op.p === 'quasi_status' && op.v === 'FINISHED') {
-                        isFinished = true;
-                    }
-                };
-
-                // 🚀 МАРШРУТИЗАТОР ЧАНКОВ
-
-                // А. Стартовый слепок (только самый первый раз, чтобы не было дублей!)
-                if (data?.v?.response?.fragments && Array.isArray(data.v.response.fragments)) {
+                if (data?.v?.response?.fragments) {
                     if (fullAnswer.length === 0) {
                         for (const frag of data.v.response.fragments) {
-                            handleFrag(frag);
+                            if (frag.type === 'THINK') {
+                                if (!isThinkingContext) { isThinkingContext = true; if (shouldSendThink) chunkDelta += `<think>\n`; }
+                                if (shouldSendThink) chunkDelta += frag.content || '';
+                            }
+                            else if (frag.type === 'RESPONSE') {
+                                if (isThinkingContext) { isThinkingContext = false; if (shouldSendThink) chunkDelta += `\n\n</think>\n\n`; }
+                                chunkDelta += frag.content || '';
+                            }
                         }
                     }
                 }
-                // Б. Пакетные операции (BATCH) - сервер часто прячет текст сюда
-                else if (data?.o === 'BATCH' && Array.isArray(data?.v)) {
-                    for (const op of data.v) {
-                        processOperation(op);
+
+                if (data?.p === 'response' && data?.o === 'BATCH' && Array.isArray(data?.v)) {
+                    for (const item of data.v) {
+                        if (item.p === 'quasi_status' && item.v === 'FINISHED') isFinished = true;
+                        if (item.p === 'fragments' && item.o === 'APPEND' && Array.isArray(item.v)) {
+                            for (const frag of item.v) {
+                                if (frag.type === 'THINK') {
+                                    if (!isThinkingContext) { isThinkingContext = true; if (shouldSendThink) chunkDelta += `<think>\n`; }
+                                    if (shouldSendThink) chunkDelta += frag.content || '';
+                                }
+                                else if (frag.type === 'RESPONSE') {
+                                    if (isThinkingContext) { isThinkingContext = false; if (shouldSendThink) chunkDelta += `\n\n</think>\n\n`; }
+                                    chunkDelta += frag.content || '';
+                                }
+                            }
+                        }
                     }
                 }
-                // В. Одиночные операции
-                else if (data?.p) {
-                    processOperation(data);
-                }
-                // Г. Короткие обрубки слов (без p и o)
-                else if (!data?.p && !data?.o && typeof data?.v === 'string') {
-                    handleText(data.v);
+
+                if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
+                    for (const frag of data.v) {
+                        if (frag.type === 'THINK') {
+                            if (!isThinkingContext) { isThinkingContext = true; if (shouldSendThink) chunkDelta += `<think>\n`; }
+                            if (shouldSendThink) chunkDelta += frag.content || '';
+                        }
+                        else if (frag.type === 'RESPONSE') {
+                            if (isThinkingContext) { isThinkingContext = false; if (shouldSendThink) chunkDelta += `\n\n</think>\n\n`; }
+                            chunkDelta += frag.content || '';
+                        }
+                    }
                 }
 
-                // 📤 ОТПРАВКА КЛИЕНТУ
+                // Прямое добавление слов (работает как часы)
+                if (typeof data?.v === 'string' && (!data?.p || data.p.endsWith('/content'))) {
+                    if (!isThinkingContext || shouldSendThink) {
+                        chunkDelta += data.v;
+                    }
+                }
+
+                if (data?.p === 'response/fragments/-1/results' && Array.isArray(data?.v)) searchResults = data.v;
+
+                // Отправка клиенту
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
                     if (isDebug) process.stdout.write(chunkDelta);
@@ -663,9 +649,7 @@ async function handleChatCompletion(req, res) {
                         res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: chunkDelta } }] })}\n\n`);
                     }
                 }
-            } catch (e) {
-                // Игнорируем мусорные или сломанные JSON-строки
-            }
+            } catch (e) { }
         }
     };
 
@@ -679,21 +663,20 @@ async function handleChatCompletion(req, res) {
         for (const m of messages) {
             const role = (m.role || 'user').toUpperCase();
             if (typeof m.content === 'string') {
-                promptText += `${role}:\n${m.content}\n\n---\n\n`;
+                promptText += `${role}:\n${m.content}\n\n`;
             } else if (Array.isArray(m.content)) {
                 const textParts = [];
                 for (const part of m.content) {
                     if (part.type === 'text' && part.text) {
                         textParts.push(part.text);
                     } else if (part.type === 'image_url' && part.image_url) {
-                        // Достаем url независимо от того, как клиент его передал
                         const imgUrl = typeof part.image_url === 'string' ? part.image_url : (part.image_url.url || '');
                         const tempPath = await saveMediaToTempFile(imgUrl);
                         if (tempPath) tempUploadedFiles.push(tempPath);
                     }
                 }
                 if (textParts.length > 0) {
-                    promptText += `${role}:\n${textParts.join('\n')}\n\n---\n\n`;
+                    promptText += `${role}:\n${textParts.join('\n')}\n\n`;
                 }
             }
         }
@@ -882,7 +865,7 @@ async function handleChatCompletion(req, res) {
 
         if (isThinkingContext) {
             isThinkingContext = false;
-            if (sendThink) {
+            if (typeof sendThink === 'undefined' || sendThink) {
                 const closeThink = `\n\n</think>\n\n`;
                 fullAnswer += closeThink;
                 if (isDebug) process.stdout.write(closeThink);
