@@ -569,7 +569,7 @@ async function handleChatCompletion(req, res) {
                 const data = JSON.parse(cleanLine);
                 let chunkDelta = '';
 
-                // 1. Обработка ошибок сервера
+                // 1. Ошибки сервера
                 if (data?.custom_error) {
                     let errStr = data.custom_error;
                     try {
@@ -583,66 +583,79 @@ async function handleChatCompletion(req, res) {
                 // 2. Статусы завершения
                 if (data?.p === 'response/status' && data?.v === 'FINISHED') isFinished = true;
                 if (data?.quasi_status === 'FINISHED') isFinished = true;
-                if (data?.p === 'response' && data?.o === 'BATCH' && Array.isArray(data.v)) {
-                    for (const item of data.v) {
-                        if (item.p === 'quasi_status' && item.v === 'FINISHED') isFinished = true;
-                    }
-                }
 
-                // 🛠️ Функция обработки фрагмента (THINK или RESPONSE)
-                const processFrag = (frag) => {
-                    let delta = '';
+                // 🛠️ ФУНКЦИИ-ПОМОЩНИКИ (СТРОГАЯ ЛОГИКА)
+
+                // Безопасное добавление текста
+                const handleText = (text) => {
+                    if (typeof text !== 'string') return;
+                    if (!isThinkingContext || sendThink) {
+                        chunkDelta += text;
+                    }
+                };
+
+                // Безопасное переключение контекста (THINK <-> RESPONSE)
+                const handleFrag = (frag) => {
                     if (frag.type === 'THINK') {
                         if (!isThinkingContext) {
                             isThinkingContext = true;
-                            if (sendThink) delta += '<think>\n';
+                            if (sendThink) chunkDelta += '<think>\n';
                         }
-                        if (sendThink && frag.content) delta += frag.content;
+                        if (frag.content) handleText(frag.content);
                     } else if (frag.type === 'RESPONSE') {
                         if (isThinkingContext) {
                             isThinkingContext = false;
-                            if (sendThink) delta += '\n\n</think>\n\n';
+                            if (sendThink) chunkDelta += '\n\n</think>\n\n';
                         }
-                        if (frag.content) delta += frag.content;
+                        if (frag.content) handleText(frag.content);
                     }
-                    return delta;
                 };
 
-                // А. Стартовый пакет (Начало генерации)
+                // Обработчик команд (JSON Patch)
+                const processOperation = (op) => {
+                    // 🚫 ГЛАВНАЯ ЗАЩИТА ОТ КАШИ: Игнорируем команды "SET" (полная перезапись)
+                    if (op.o === 'SET') return;
+
+                    // Создание новых блоков ответа
+                    if (op.p === 'response/fragments' && op.o === 'APPEND' && Array.isArray(op.v)) {
+                        for (const f of op.v) handleFrag(f);
+                    }
+                    // Добавление новых слов
+                    else if (typeof op.p === 'string' && op.p.endsWith('/content') && (op.o === 'APPEND' || !op.o) && typeof op.v === 'string') {
+                        handleText(op.v);
+                    }
+                    // Конец генерации внутри пакета
+                    else if (op.p === 'quasi_status' && op.v === 'FINISHED') {
+                        isFinished = true;
+                    }
+                };
+
+                // 🚀 МАРШРУТИЗАТОР ЧАНКОВ
+
+                // А. Стартовый слепок (только самый первый раз, чтобы не было дублей!)
                 if (data?.v?.response?.fragments && Array.isArray(data.v.response.fragments)) {
-                    // Защита от дублей: парсим только в самом начале
                     if (fullAnswer.length === 0) {
                         for (const frag of data.v.response.fragments) {
-                            chunkDelta += processFrag(frag);
+                            handleFrag(frag);
                         }
                     }
                 }
-
-                // Б. Смена контекста (Конец мыслей, переход к ответу)
-                // Ловим {"p":"response/fragments","o":"APPEND","v":[{"type":"RESPONSE"}]}
-                else if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
-                    for (const frag of data.v) {
-                        chunkDelta += processFrag(frag);
+                // Б. Пакетные операции (BATCH) - сервер часто прячет текст сюда
+                else if (data?.o === 'BATCH' && Array.isArray(data?.v)) {
+                    for (const op of data.v) {
+                        processOperation(op);
                     }
                 }
-
-                // В. Явное добавление текста 
-                // Ловим {"p":"response/fragments/-1/content","v":" text"}
-                else if (typeof data?.p === 'string' && data.p.endsWith('/content') && typeof data?.v === 'string') {
-                    if (!isThinkingContext || sendThink) {
-                        chunkDelta += data.v;
-                    }
+                // В. Одиночные операции
+                else if (data?.p) {
+                    processOperation(data);
+                }
+                // Г. Короткие обрубки слов (без p и o)
+                else if (!data?.p && !data?.o && typeof data?.v === 'string') {
+                    handleText(data.v);
                 }
 
-                // Г. Неявное добавление текста (сокращенные чанки)
-                // Ловим {"v":" text"} без параметра "p"
-                else if (!data?.p && typeof data?.v === 'string') {
-                    if (!isThinkingContext || sendThink) {
-                        chunkDelta += data.v;
-                    }
-                }
-
-                // Отправляем дельту клиенту
+                // 📤 ОТПРАВКА КЛИЕНТУ
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
                     if (isDebug) process.stdout.write(chunkDelta);
@@ -651,7 +664,7 @@ async function handleChatCompletion(req, res) {
                     }
                 }
             } catch (e) {
-                // Игнорируем битый JSON
+                // Игнорируем мусорные или сломанные JSON-строки
             }
         }
     };
