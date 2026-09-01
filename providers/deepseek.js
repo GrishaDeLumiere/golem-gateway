@@ -569,6 +569,7 @@ async function handleChatCompletion(req, res) {
                 const data = JSON.parse(cleanLine);
                 let chunkDelta = '';
 
+                // 1. Обработка ошибок сервера
                 if (data?.custom_error) {
                     let errStr = data.custom_error;
                     try {
@@ -579,58 +580,69 @@ async function handleChatCompletion(req, res) {
                     isFinished = true;
                 }
 
+                // 2. Статусы завершения
                 if (data?.p === 'response/status' && data?.v === 'FINISHED') isFinished = true;
                 if (data?.quasi_status === 'FINISHED') isFinished = true;
-
-                if (data?.v?.response?.fragments) {
-                    for (const frag of data.v.response.fragments) {
-                        if (frag.type === 'THINK') {
-                            if (!isThinkingContext) { isThinkingContext = true; if (sendThink) chunkDelta += `<think>\n`; }
-                            if (sendThink) chunkDelta += frag.content || '';
-                        } else if (frag.type === 'RESPONSE') {
-                            if (isThinkingContext) { isThinkingContext = false; if (sendThink) chunkDelta += `\n\n</think>\n\n`; }
-                            chunkDelta += frag.content || '';
-                        }
-                    }
-                }
-
-                if (data?.p === 'response' && data?.o === 'BATCH' && Array.isArray(data?.v)) {
+                if (data?.p === 'response' && data?.o === 'BATCH' && Array.isArray(data.v)) {
                     for (const item of data.v) {
                         if (item.p === 'quasi_status' && item.v === 'FINISHED') isFinished = true;
-                        if (item.p === 'fragments' && item.o === 'APPEND' && Array.isArray(item.v)) {
-                            for (const frag of item.v) {
-                                if (frag.type === 'THINK') {
-                                    if (!isThinkingContext) { isThinkingContext = true; if (sendThink) chunkDelta += `<think>\n`; }
-                                    if (sendThink) chunkDelta += frag.content || '';
-                                } else if (frag.type === 'RESPONSE') {
-                                    if (isThinkingContext) { isThinkingContext = false; if (sendThink) chunkDelta += `\n\n</think>\n\n`; }
-                                    chunkDelta += frag.content || '';
-                                }
-                            }
+                    }
+                }
+
+                // 🛠️ Функция обработки фрагмента (THINK или RESPONSE)
+                const processFrag = (frag) => {
+                    let delta = '';
+                    if (frag.type === 'THINK') {
+                        if (!isThinkingContext) {
+                            isThinkingContext = true;
+                            if (sendThink) delta += '<think>\n';
+                        }
+                        if (sendThink && frag.content) delta += frag.content;
+                    } else if (frag.type === 'RESPONSE') {
+                        if (isThinkingContext) {
+                            isThinkingContext = false;
+                            if (sendThink) delta += '\n\n</think>\n\n';
+                        }
+                        if (frag.content) delta += frag.content;
+                    }
+                    return delta;
+                };
+
+                // А. Стартовый пакет (Начало генерации)
+                if (data?.v?.response?.fragments && Array.isArray(data.v.response.fragments)) {
+                    // Защита от дублей: парсим только в самом начале
+                    if (fullAnswer.length === 0) {
+                        for (const frag of data.v.response.fragments) {
+                            chunkDelta += processFrag(frag);
                         }
                     }
                 }
 
-                if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
+                // Б. Смена контекста (Конец мыслей, переход к ответу)
+                // Ловим {"p":"response/fragments","o":"APPEND","v":[{"type":"RESPONSE"}]}
+                else if (data?.p === 'response/fragments' && data?.o === 'APPEND' && Array.isArray(data?.v)) {
                     for (const frag of data.v) {
-                        if (frag.type === 'THINK') {
-                            if (!isThinkingContext) { isThinkingContext = true; if (sendThink) chunkDelta += `<think>\n`; }
-                            if (sendThink) chunkDelta += frag.content || '';
-                        } else if (frag.type === 'RESPONSE') {
-                            if (isThinkingContext) { isThinkingContext = false; if (sendThink) chunkDelta += `\n\n</think>\n\n`; }
-                            chunkDelta += frag.content || '';
-                        }
+                        chunkDelta += processFrag(frag);
                     }
                 }
 
-                if (typeof data?.v === 'string' && (!data?.p || data.p.endsWith('/content'))) {
+                // В. Явное добавление текста 
+                // Ловим {"p":"response/fragments/-1/content","v":" text"}
+                else if (typeof data?.p === 'string' && data.p.endsWith('/content') && typeof data?.v === 'string') {
                     if (!isThinkingContext || sendThink) {
                         chunkDelta += data.v;
                     }
                 }
 
-                if (data?.p === 'response/fragments/-1/results' && Array.isArray(data?.v)) searchResults = data.v;
+                // Г. Неявное добавление текста (сокращенные чанки)
+                // Ловим {"v":" text"} без параметра "p"
+                else if (!data?.p && typeof data?.v === 'string') {
+                    if (!isThinkingContext || sendThink) {
+                        chunkDelta += data.v;
+                    }
+                }
 
+                // Отправляем дельту клиенту
                 if (chunkDelta) {
                     fullAnswer += chunkDelta;
                     if (isDebug) process.stdout.write(chunkDelta);
@@ -638,7 +650,9 @@ async function handleChatCompletion(req, res) {
                         res.write(`data: ${JSON.stringify({ id: "ds-chat", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: { content: chunkDelta } }] })}\n\n`);
                     }
                 }
-            } catch (e) { }
+            } catch (e) {
+                // Игнорируем битый JSON
+            }
         }
     };
 
