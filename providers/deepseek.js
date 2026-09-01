@@ -24,6 +24,7 @@ let currentPort = PORT;
 let isBrowserBusy = false;
 let taskQueue = [];
 let currentRequestId = 0;
+let activeGenerationId = null;
 let isAuthInProgress = false;
 const networkStreamEvents = new EventEmitter();
 let initQueue = Promise.resolve();
@@ -223,12 +224,13 @@ async function initProviderCore(port = PORT) {
             });
             await page.evaluateOnNewDocument(() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }); });
 
-            await page.exposeFunction('emitChunkToNode', (text) => networkStreamEvents.emit('chunk', text));
-            await page.exposeFunction('emitEndToNode', () => networkStreamEvents.emit('end'));
+            await page.exposeFunction('emitChunkToNode', (reqId, text) => networkStreamEvents.emit('chunk', { reqId, text }));
+            await page.exposeFunction('emitEndToNode', (reqId) => networkStreamEvents.emit('end', { reqId }));
 
-            // 💉 ОРИГИНАЛЬНЫЙ ВОССТАНОВЛЕННЫЙ ТРОЯН (XHR + FETCH)
+            // 💉 ОРИГИНАЛЬНЫЙ ВОССТАНОВЛЕННЫЙ ТРОЯН (XHR + FETCH) + ЖЕСТКИЙ KILL SWITCH
             await page.evaluateOnNewDocument(() => {
-                // 1. Старый хук XHR (Обязателен для резервных потоков DeepSeek)
+                window._nodeRequestId = 0;
+
                 const originalOpen = XMLHttpRequest.prototype.open;
                 const originalSend = XMLHttpRequest.prototype.send;
                 XMLHttpRequest.prototype.open = function (method, url) {
@@ -237,37 +239,39 @@ async function initProviderCore(port = PORT) {
                 };
                 XMLHttpRequest.prototype.send = function () {
                     if (this._isVampTarget) {
+                        this._myReqId = window._nodeRequestId;
                         let lastLength = 0;
                         this.addEventListener('readystatechange', function () {
+                            if (this._myReqId !== window._nodeRequestId) { this.abort(); return; }
                             try {
                                 if (this.readyState === 3 || this.readyState === 4) {
                                     const text = this.responseText || (typeof this.response === 'string' ? this.response : '');
                                     if (text) {
                                         const newDelta = text.substring(lastLength);
                                         lastLength = text.length;
-                                        if (newDelta && window.emitChunkToNode) window.emitChunkToNode(newDelta);
+                                        if (newDelta && window.emitChunkToNode) window.emitChunkToNode(this._myReqId, newDelta);
                                     }
                                 }
                             } catch (e) { }
-                            if (this.readyState === 4 && window.emitEndToNode) window.emitEndToNode();
+                            if (this.readyState === 4 && window.emitEndToNode) window.emitEndToNode(this._myReqId);
                         });
                     }
                     return originalSend.apply(this, arguments);
                 };
 
-                // 2. Хук FETCH
                 const originalFetch = window.fetch;
                 window.fetch = async function (...args) {
                     const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
                     const response = await originalFetch.apply(this, args);
 
                     if (url.includes('/api/v0/chat/completion') && response.body) {
+                        const myReqId = window._nodeRequestId;
                         const clone = response.clone();
                         if (!response.ok || (response.headers.get('content-type') || '').includes('application/json')) {
                             clone.text().then(text => {
-                                if (window.emitChunkToNode) window.emitChunkToNode(`data: {"custom_error": ${JSON.stringify(text)}}\n\n`);
-                                if (window.emitEndToNode) window.emitEndToNode();
-                            }).catch(() => { if (window.emitEndToNode) window.emitEndToNode(); });
+                                if (window._nodeRequestId === myReqId && window.emitChunkToNode) window.emitChunkToNode(myReqId, `data: {"custom_error": ${JSON.stringify(text)}}\n\n`);
+                                if (window._nodeRequestId === myReqId && window.emitEndToNode) window.emitEndToNode(myReqId);
+                            }).catch(() => { if (window._nodeRequestId === myReqId && window.emitEndToNode) window.emitEndToNode(myReqId); });
                             return response;
                         }
 
@@ -276,12 +280,14 @@ async function initProviderCore(port = PORT) {
                         (async () => {
                             try {
                                 while (true) {
+                                    if (window._nodeRequestId !== myReqId) { await reader.cancel().catch(() => { }); break; }
                                     const { done, value } = await reader.read();
-                                    if (done) { if (window.emitEndToNode) window.emitEndToNode(); break; }
+                                    if (window._nodeRequestId !== myReqId) break;
+                                    if (done) { if (window.emitEndToNode) window.emitEndToNode(myReqId); break; }
                                     const chunk = decoder.decode(value, { stream: true });
-                                    if (chunk && window.emitChunkToNode) window.emitChunkToNode(chunk);
+                                    if (chunk && window.emitChunkToNode) window.emitChunkToNode(myReqId, chunk);
                                 }
-                            } catch (e) { if (window.emitEndToNode) window.emitEndToNode(); }
+                            } catch (e) { if (window._nodeRequestId === myReqId && window.emitEndToNode) window.emitEndToNode(myReqId); }
                         })();
                     }
                     return response;
@@ -551,8 +557,10 @@ async function handleChatCompletion(req, res) {
 
     const tempUploadedFiles = [];
 
-    // 💉 ОРИГИНАЛЬНЫЙ ПАРСЕР ЧАНКОВ (НЕ ТРОГАТЬ)
-    const handleChunk = (rawText) => {
+    // 💉 ОРИГИНАЛЬНЫЙ ПАРСЕР ЧАНКОВ (С ФИЛЬТРОМ ID)
+    const handleChunk = (payload) => {
+        if (!payload || payload.reqId !== myRequestId) return;
+        const rawText = payload.text;
         if (checkAborted()) return;
         sseBuffer += rawText;
         const lines = sseBuffer.split('\n');
@@ -653,7 +661,7 @@ async function handleChatCompletion(req, res) {
         }
     };
 
-    const onEnd = () => { isFinished = true; };
+    const onEnd = (payload) => { if (payload && payload.reqId === myRequestId) isFinished = true; };
 
     try {
         const messages = req.body.messages || [];
@@ -828,6 +836,10 @@ async function handleChatCompletion(req, res) {
             }
         }
 
+        activeGenerationId = myRequestId;
+
+        await page.evaluate((id) => { window._nodeRequestId = id; }, myRequestId);
+
         networkStreamEvents.on('chunk', handleChunk);
         networkStreamEvents.on('end', onEnd);
 
@@ -899,6 +911,9 @@ async function handleChatCompletion(req, res) {
         }
     } finally {
         isFinished = true;
+
+        activeGenerationId = null;
+
         networkStreamEvents.off('chunk', handleChunk);
         networkStreamEvents.off('end', onEnd);
 
