@@ -30,19 +30,10 @@ const networkStreamEvents = new EventEmitter();
 let initQueue = Promise.resolve();
 
 const MODELS = [
-    { id: "deepseek-v4-flash", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-flash-search", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-flash-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-flash-search-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-pro", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-pro-search", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-pro-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-pro-search-think", object: "model", owned_by: "deepseek-system" },
-    // 👁️ VISION МОДЕЛИ
-    { id: "deepseek-v4-vision", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-vision-think", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-vision-search", object: "model", owned_by: "deepseek-system" },
-    { id: "deepseek-v4-vision-search-think", object: "model", owned_by: "deepseek-system" }
+    { id: "deepseek-chat", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-chat-search", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-chat-think", object: "model", owned_by: "deepseek-system" },
+    { id: "deepseek-chat-search-think", object: "model", owned_by: "deepseek-system" }
 ];
 
 const DB_FILE = path.join(__dirname, '../deepseek_accounts.json');
@@ -486,7 +477,7 @@ async function handleChatCompletion(req, res) {
     const isDebug = currentSettings.debugMode;
     const isStream = req.body.stream;
     const sendThink = currentSettings.providerSettings?.deepseek?.sendThink ?? true;
-    let requestedModel = req.body.model || currentSettings.defaultModel || "deepseek-v4-flash";
+    let requestedModel = req.body.model || currentSettings.defaultModel || "deepseek-chat";
 
     if (isStream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
@@ -733,36 +724,27 @@ async function handleChatCompletion(req, res) {
         if (!captchaCleared) throw new Error('Не удалось обойти капчу AWS WAF.');
 
         const wantsSearch = requestedModel.includes('search');
-        const wantsThink = requestedModel.includes('think');
-        const wantsVision = requestedModel.includes('vision') || tempUploadedFiles.length > 0;
-        const wantsExpert = (requestedModel.includes('expert') || requestedModel.includes('pro')) && !wantsVision;
+        const wantsThink = requestedModel.includes('think') || requestedModel.includes('reasoner');
 
-        // ПЕРЕКЛЮЧЕНИЕ МОДЕЛЕЙ И КНОПОК
-        await page.evaluate((search, think, expert, vision) => {
-            let targetModelType = "default";
-            if (vision) targetModelType = "vision";
-            else if (expert) targetModelType = "expert";
-
-            const modelRadio = document.querySelector(`div[data-model-type="${targetModelType}"]`);
-            if (modelRadio && modelRadio.getAttribute('aria-checked') !== 'true') {
-                modelRadio.click();
-            }
-
+        // ПЕРЕКЛЮЧЕНИЕ ТОЛЬКО КНОПОК ПОИСКА И МЫШЛЕНИЯ (Модель теперь единая)
+        await page.evaluate((search, think) => {
             const toggleButtons = Array.from(document.querySelectorAll('.ds-toggle-button, [role="switch"]'));
+            
             const searchBtn = toggleButtons.find(btn => btn.textContent && (btn.textContent.includes('Умный поиск') || btn.textContent.includes('Search')));
             if (searchBtn) {
                 const isSelected = searchBtn.classList.contains('ds-toggle-button--selected') || searchBtn.getAttribute('aria-pressed') === 'true' || searchBtn.getAttribute('aria-checked') === 'true';
                 if (search !== isSelected) searchBtn.click();
             }
+
             const thinkBtn = toggleButtons.find(btn => btn.textContent && (btn.textContent.includes('Глубокое мышление') || btn.textContent.includes('DeepThink')));
             if (thinkBtn) {
                 const isSelected = thinkBtn.classList.contains('ds-toggle-button--selected') || thinkBtn.getAttribute('aria-pressed') === 'true' || thinkBtn.getAttribute('aria-checked') === 'true';
                 if (think !== isSelected) thinkBtn.click();
             }
-        }, wantsSearch, wantsThink, wantsExpert, wantsVision);
+        }, wantsSearch, wantsThink);
 
-        // ❗️ ВАЖНО: Даем React время перерисовать DOM после смены режима
-        await new Promise(r => setTimeout(r, 2000));
+        // Небольшая пауза для применения состояния кнопок
+        await new Promise(r => setTimeout(r, 500));
         if (checkAborted()) throw new Error(checkAborted());
 
         // 📝 ШАГ 1: ВСТАВЛЯЕМ ТЕКСТ ДО ЗАГРУЗКИ КАРТИНКИ!
