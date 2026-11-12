@@ -1,18 +1,31 @@
 // providers/deepseek.js
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const childProcess = require('child_process');
+if (!childProcess._golemSpawnPatched) {
+    const origSpawn = childProcess.spawn;
+    childProcess.spawn = function (command, args, options) {
+        if (options && typeof options === 'object' && Array.isArray(args)) {
+            const isBrowser = args.some(a => typeof a === 'string' && a.startsWith('--remote-debugging-'));
+            const isHeadless = args.some(a => typeof a === 'string' && a.startsWith('--headless'));
+            if (isBrowser && !isHeadless) {
+                options = { ...options, windowsHide: false };
+            }
+        }
+        return origSpawn.call(this, command, args, options);
+    };
+    childProcess._golemSpawnPatched = true;
+}
+const puppeteer = require('rebrowser-puppeteer');
 const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
 const http = require('http');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const { PORT } = require('../config');
 const { getSettings } = require('../settings');
 const { renderSearchBlock } = require('../searchRenderer');
-
-puppeteer.use(StealthPlugin());
+const browserScanner = require('../browserScanner');
 
 // ==========================================
 // ГЛОБАЛЬНОЕ СОСТОЯНИЕ ПРОВАЙДЕРА
@@ -63,8 +76,32 @@ async function safeCloseBrowser(br) {
         br._isIntentionalClose = true;
         const proc = br.process();
         const pid = proc ? proc.pid : null;
-        await Promise.race([br.close().catch(() => { }), new Promise(r => setTimeout(r, 2000))]);
-        if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (e) { } }
+
+        try {
+            const openPages = await br.pages().catch(() => []);
+            await Promise.all(openPages.map(p => p.close().catch(() => { })));
+        } catch (e) { }
+
+        await Promise.race([br.close().catch(() => { }), new Promise(r => setTimeout(r, 4000))]);
+
+        if (pid) {
+            let isAlive = false;
+            try {
+                process.kill(pid, 0);
+                isAlive = true;
+            } catch (e) {
+                isAlive = false;
+            }
+
+            if (isAlive) {
+                if (process.platform === 'win32') {
+                    try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch (e) { }
+                } else {
+                    try { process.kill(pid, 'SIGKILL'); } catch (e) { }
+                }
+            }
+            await new Promise(r => setTimeout(r, 350));
+        }
     } catch (err) { }
 }
 
@@ -107,6 +144,87 @@ async function saveMediaToTempFile(dataOrUrl) {
     return null;
 }
 
+async function applyHeadlessAntiDetect(browserInstance, pageInstance) {
+    try {
+        const rawUA = await browserInstance.userAgent();
+        if (!rawUA || !rawUA.includes('Headless')) return;
+
+        const cleanUA = rawUA.replace(/Headless/g, '');
+        const isEdge = rawUA.includes('Edg/') || rawUA.includes('HeadlessEdg/');
+
+        const realUAData = await pageInstance.evaluate(async () => {
+            if (!navigator.userAgentData) return null;
+            const hi = await navigator.userAgentData.getHighEntropyValues([
+                'architecture', 'bitness', 'fullVersionList', 'model', 'platform', 'platformVersion'
+            ]);
+            return {
+                brands: navigator.userAgentData.brands || [],
+                mobile: Boolean(navigator.userAgentData.mobile),
+                platform: hi.platform || navigator.userAgentData.platform || 'Windows',
+                platformVersion: hi.platformVersion || '',
+                architecture: hi.architecture || 'x86',
+                bitness: hi.bitness || '64',
+                model: hi.model || '',
+                fullVersionList: hi.fullVersionList || []
+            };
+        }).catch(() => null);
+
+        const cleanBrandList = (list) => {
+            if (!Array.isArray(list) || list.length === 0) return undefined;
+            const mapped = [];
+            const seen = new Set();
+            for (const item of list) {
+                let brand = String(item.brand || '');
+                if (brand === 'HeadlessEdg') brand = 'Microsoft Edge';
+                else if (brand === 'HeadlessChrome') brand = isEdge ? 'Microsoft Edge' : 'Google Chrome';
+                else brand = brand.replace(/Headless/g, '').trim();
+                if (!brand || seen.has(brand)) continue;
+                seen.add(brand);
+                mapped.push({ brand, version: String(item.version || '') });
+            }
+            return mapped;
+        };
+
+        let userAgentMetadata;
+        if (realUAData) {
+            const brands = cleanBrandList(realUAData.brands);
+            const fullVersionList = cleanBrandList(realUAData.fullVersionList);
+            const mainEntry = (fullVersionList || []).find(
+                b => b.brand === 'Microsoft Edge' || b.brand === 'Google Chrome' || b.brand === 'Chromium'
+            );
+            userAgentMetadata = {
+                ...(brands ? { brands } : {}),
+                ...(fullVersionList ? { fullVersionList } : {}),
+                fullVersion: mainEntry ? mainEntry.version : '',
+                platform: realUAData.platform,
+                platformVersion: realUAData.platformVersion,
+                architecture: realUAData.architecture,
+                model: realUAData.model,
+                mobile: realUAData.mobile,
+                bitness: realUAData.bitness
+            };
+        }
+
+        await pageInstance.setUserAgent(cleanUA, userAgentMetadata);
+    } catch (e) { }
+}
+
+async function getBrowserCookiesCompat(browserInstance, pageInstance) {
+    if (browserInstance && typeof browserInstance.cookies === 'function') {
+        return await browserInstance.cookies();
+    }
+    return await pageInstance.cookies();
+}
+
+async function setCookiesCompat(browserInstance, pageInstance, cookies) {
+    if (!Array.isArray(cookies) || cookies.length === 0) return;
+    if (typeof pageInstance.setCookie === 'function') {
+        await pageInstance.setCookie(...cookies);
+    } else if (browserInstance && typeof browserInstance.setCookie === 'function') {
+        await browserInstance.setCookie(...cookies);
+    }
+}
+
 // ==========================================
 // ЯДРО: ИНИЦИАЛИЗАЦИЯ И ANTI-DETECT
 // ==========================================
@@ -143,40 +261,29 @@ async function initProviderCore(port = PORT) {
 
             console.log('[⚙️ DeepSeek] Создаем голема в тенях...');
             const currentSettings = typeof getSettings === 'function' ? getSettings() : { providerSettings: {} };
-            const isVisible = currentSettings.providerSettings?.deepseek?.showBrowser || false;
+            const dsConfig = currentSettings.providerSettings?.deepseek || {};
+            const isVisible = Boolean(dsConfig.showBrowser);
 
-            const newBrowser = await puppeteer.launch({
-                headless: isVisible ? false : 'new',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-blink-features=AutomationControlled',
-                    '--window-size=1280,800',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process',
-                    // 🚀 ГЛУШИМ ПРОЦЕССОР И РЕНДЕРИНГ:
-                    '--disable-gpu',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--disable-gl-drawing-for-tests',
-                    '--mute-audio',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-background-networking',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-breakpad',
-                    '--disable-component-update',
-                    '--disable-default-apps',
-                    '--disable-domain-reliability',
-                    '--disable-extensions',
-                    '--disable-sync',
-                    '--disable-translate',
-                    '--metrics-recording-only',
-                    '--safebrowsing-disable-auto-update'
-                ],
-                defaultViewport: null
+            const selectedBrowser = await browserScanner.resolveBrowserSelection(dsConfig, puppeteer);
+            const safeBrowserTag = (selectedBrowser.id || 'default').replace(/[^a-z0-9_-]/gi, '_');
+            const profileDir = path.join(__dirname, '../deepseek_profiles', `acc_${db.active || 0}_${safeBrowserTag}`);
+            if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+            for (const lockFile of ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'parent.lock']) {
+                const lockPath = path.join(profileDir, lockFile);
+                try { if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath); } catch (e) { }
+            }
+
+            const { browserInfo, launchOptions } = await browserScanner.buildLaunchOptions({
+                config: dsConfig,
+                userDataDir: profileDir,
+                headless: !isVisible,
+                width: 1280,
+                height: 800,
+                puppeteerLib: puppeteer
             });
+
+            console.log(`[🌐 DeepSeek] Движок: ${browserInfo.name} [${browserInfo.engine}] | Режим: ${isVisible ? 'Видимое окно' : 'Скрытый (Headless)'} (${browserInfo.path || 'built-in'})`);
+            const newBrowser = await puppeteer.launch(launchOptions);
 
             browser = newBrowser;
 
@@ -189,31 +296,31 @@ async function initProviderCore(port = PORT) {
                 }
             });
 
-            page = await browser.newPage();
+            const existingPages = await browser.pages();
+            page = existingPages[0] || await browser.newPage();
 
-            // 🛑 БЛОКИРУЕМ ЖРУЩИЕ CPU ШРИФТЫ, МЕДИА И АНАЛИТИКУ
-            await page.setRequestInterception(true);
-            page.on('request', (req) => {
-                const resourceType = req.resourceType();
-                const url = req.url();
+            if (isVisible) {
+                await browserScanner.ensureWindowVisible(browser, page, 1280, 800);
+            } else if (browserInfo.engine === 'chromium') {
+                await applyHeadlessAntiDetect(browser, page);
+            }
 
-                if (['font', 'media', 'texttrack', 'eventsource', 'manifest'].includes(resourceType)) {
-                    return req.abort();
-                }
-                if (url.includes('google-analytics') || url.includes('sentry') || url.includes('sensorsdata')) {
-                    return req.abort();
-                }
-                req.continue();
-            });
+            // 🛑 БЛОКИРОВКА РЕСУРСОВ (ТОЛЬКО ДЛЯ CHROMIUM И ТОЛЬКО ПРИ АКТИВАЦИИ В НАСТРОЙКАХ)
+            if (dsConfig.blockResources && browserInfo.engine === 'chromium') {
+                await page.setRequestInterception(true);
+                page.on('request', (req) => {
+                    const resourceType = req.resourceType();
+                    const url = req.url();
 
-            // 🛡️ ANTI-DETECT
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0');
-            await page.setExtraHTTPHeaders({
-                'sec-ch-ua': '"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"'
-            });
-            await page.evaluateOnNewDocument(() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }); });
+                    if (['font', 'media', 'texttrack', 'eventsource', 'manifest'].includes(resourceType)) {
+                        return req.abort();
+                    }
+                    if (url.includes('google-analytics') || url.includes('sentry') || url.includes('sensorsdata')) {
+                        return req.abort();
+                    }
+                    req.continue();
+                });
+            }
 
             await page.exposeFunction('emitChunkToNode', (reqId, text) => networkStreamEvents.emit('chunk', { reqId, text }));
             await page.exposeFunction('emitEndToNode', (reqId) => networkStreamEvents.emit('end', { reqId }));
@@ -285,18 +392,26 @@ async function initProviderCore(port = PORT) {
                 };
             });
 
-            const cookiesRaw = accCookies || '';
-            if (cookiesRaw) {
-                const cookies = cookiesRaw.split(';').map(pair => {
+            if (Array.isArray(activeAcc.cookiesJson) && activeAcc.cookiesJson.length > 0) {
+                await setCookiesCompat(browser, page, activeAcc.cookiesJson).catch(() => { });
+            } else if (accCookies) {
+                const cookies = accCookies.split(';').map(pair => {
                     const index = pair.indexOf('=');
                     if (index === -1) return null;
-                    return { name: pair.substring(0, index).trim(), value: pair.substring(index + 1).trim(), domain: '.deepseek.com', path: '/' };
+                    const name = pair.substring(0, index).trim();
+                    const value = pair.substring(index + 1).trim();
+                    if (!name) return null;
+                    if (name.startsWith('__Host-')) {
+                        return { name, value, url: 'https://chat.deepseek.com', path: '/', secure: true };
+                    }
+                    return { name, value, domain: '.deepseek.com', path: '/' };
                 }).filter(c => c !== null);
-                await page.setCookie(...cookies);
+                await setCookiesCompat(browser, page, cookies).catch(() => { });
             }
 
             if (accToken) {
                 await page.evaluateOnNewDocument((tokenText) => {
+                    if (!location.hostname.endsWith('deepseek.com')) return;
                     let t = tokenText.replace(/^['"]|['"]$/g, '');
                     try { let parsed = JSON.parse(t); if (parsed.value) t = parsed.value; } catch (e) { }
                     localStorage.setItem('userToken', JSON.stringify({ value: t, __version: "0" }));
@@ -310,7 +425,16 @@ async function initProviderCore(port = PORT) {
             const captchaCleared = await checkAndHandleCaptcha(page);
             if (!captchaCleared) console.log('[⚠️ DeepSeek] Внимание: Капча AWS WAF не была пройдена.');
 
-            if (page.url().includes('sign_in')) {
+            const isSignedOut = await page.evaluate(() => {
+                const bodyText = document.body ? document.body.innerText : '';
+                return window.location.href.includes('sign_in')
+                    || bodyText.includes('You have signed out of your account')
+                    || bodyText.includes('please log in again')
+                    || bodyText.includes('Вы вышли из аккаунта')
+                    || !localStorage.getItem('userToken');
+            });
+
+            if (isSignedOut) {
                 console.error('[❌ DeepSeek] Сессия протухла. Начинаю сброс...');
                 await safeCloseBrowser(browser);
                 browser = null;
@@ -318,7 +442,7 @@ async function initProviderCore(port = PORT) {
                 throw new Error("Session expired");
             }
 
-            console.log('[✨ DeepSeek] Голем на позиции. Алгоритм активен (Edge 149). Fetch/XHR инжектирован.');
+            console.log(`[✨ DeepSeek] Голем на позиции (${browserInfo.name} / ${browserInfo.engine}). Fetch/XHR инжектирован.`);
         } catch (err) {
             if (err.message !== "No accounts" && err.message !== "No tokens" && err.message !== "Session expired") {
                 console.error('[❌ DeepSeek] Ошибка инициализации:', err.message);
@@ -380,6 +504,20 @@ function setupRoutes(app, port) {
         }
     });
 
+    app.post('/api/deepseek/reload', async (req, res) => {
+        try {
+            const db = getDb();
+            if (!db.accounts || db.accounts.length === 0) {
+                return res.json({ success: true, skipped: true });
+            }
+            isBrowserBusy = false;
+            await initProvider(currentPort);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     app.get('/api/deepseek/auto-auth', async (req, res) => {
         if (isAuthInProgress) {
             console.log('[⚠️ DeepSeek] Заблокирована попытка двойного открытия окна авторизации.');
@@ -388,43 +526,94 @@ function setupRoutes(app, port) {
         }
 
         isAuthInProgress = true;
+        let authBrowser = null;
+        let checkLogin = null;
 
         try {
-            console.log('[🔑 DeepSeek] Запуск видимого Edge для авторизации...');
-            const authBrowser = await puppeteer.launch({ headless: false, args: ['--window-size=1200,800', '--disable-blink-features=AutomationControlled'], defaultViewport: null });
-            const authPage = await authBrowser.newPage();
-            await authPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0');
-            await authPage.setExtraHTTPHeaders({ 'sec-ch-ua': '"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"', 'sec-ch-ua-platform': '"Windows"' });
-            await authPage.goto('https://chat.deepseek.com/sign_in', { waitUntil: 'domcontentloaded' });
+            if (browser) {
+                console.log('[⚙️ DeepSeek] Останавливаю фоновый процесс перед входом...');
+                await safeCloseBrowser(browser);
+                browser = null;
+                page = null;
+                isBrowserBusy = false;
+            }
+
+            console.log('[🔑 DeepSeek] Запуск видимого браузера для авторизации...');
+            const dsConfig = (typeof getSettings === 'function' ? getSettings() : {}).providerSettings?.deepseek || {};
+            const authProfileDir = path.join(__dirname, '../deepseek_profiles', `profile_${Date.now()}`);
+            if (!fs.existsSync(authProfileDir)) fs.mkdirSync(authProfileDir, { recursive: true });
+
+            const { browserInfo, launchOptions: authLaunchOptions } = await browserScanner.buildLaunchOptions({
+                config: dsConfig,
+                userDataDir: authProfileDir,
+                headless: false,
+                width: 1200,
+                height: 800,
+                puppeteerLib: puppeteer
+            });
+
+            console.log(`[🔑 DeepSeek] Авторизация в: ${browserInfo.name} [${browserInfo.engine}]`);
+            authBrowser = await puppeteer.launch(authLaunchOptions);
+            console.log('[🔑 DeepSeek] Процесс браузера запущен, открываю страницу входа...');
 
             let isAuthSuccess = false;
             let isChecking = false;
 
-            const checkLogin = setInterval(async () => {
+            authBrowser.on('disconnected', () => {
+                if (!isAuthSuccess && !authBrowser._isIntentionalClose) {
+                    if (checkLogin) clearInterval(checkLogin);
+                    isAuthInProgress = false;
+                    console.log('[⚠️ DeepSeek] Окно авторизации было закрыто или завершило работу.');
+                    if (!res.headersSent) {
+                        res.status(400).json({ errorCode: 'ds_auth_closed', error: 'Окно закрыто' });
+                    }
+                    if (getDb().accounts.length > 0) {
+                        initProvider(currentPort).catch(() => { });
+                    }
+                }
+            });
+
+            const authPages = await authBrowser.pages();
+            const authPage = authPages[0] || await authBrowser.newPage();
+            await browserScanner.ensureWindowVisible(authBrowser, authPage, 1200, 800);
+            await authPage.goto('https://chat.deepseek.com/sign_in', { waitUntil: 'domcontentloaded', timeout: 25000 });
+            await browserScanner.ensureWindowVisible(authBrowser, authPage, 1200, 800);
+            console.log('[🔑 DeepSeek] Страница входа открыта. Жду авторизацию...');
+
+            checkLogin = setInterval(async () => {
                 if (isAuthSuccess || isChecking) return;
                 isChecking = true;
                 try {
-                    if (!authBrowser.isConnected()) {
+                    if (!authBrowser.connected) {
                         clearInterval(checkLogin);
                         isAuthInProgress = false;
                         if (!res.headersSent) return res.status(400).json({ errorCode: 'ds_auth_closed', error: 'Окно закрыто' });
                         return;
                     }
-                    const tokenData = await authPage.evaluate(() => {
+                    const authState = await authPage.evaluate(() => {
                         const val = localStorage.getItem('userToken');
                         if (!val) return null;
-                        try { return JSON.parse(val).value; } catch (e) { return val; }
+                        let token = val;
+                        try { token = JSON.parse(val).value; } catch (e) { }
+                        return { token, url: window.location.href };
                     });
-                    if (tokenData && !isAuthSuccess) {
+                    if (authState && authState.token && !authState.url.includes('sign_in') && !isAuthSuccess) {
                         isAuthSuccess = true;
                         clearInterval(checkLogin);
-                        const cookiesArray = await authPage.cookies();
+                        await new Promise(r => setTimeout(r, 3000));
+                        const cookiesArray = await getBrowserCookiesCompat(authBrowser, authPage);
                         const cookiesStr = cookiesArray.map(c => `${c.name}=${c.value}`).join('; ');
                         const db = getDb();
-                        db.accounts.push({ name: `Профиль #${db.accounts.length + 1}`, token: tokenData.replace(/(^"|"$)/g, ''), cookies: cookiesStr });
+                        db.accounts.push({
+                            name: `Профиль #${db.accounts.length + 1}`,
+                            token: authState.token.replace(/(^"|"$)/g, ''),
+                            cookies: cookiesStr,
+                            cookiesJson: cookiesArray,
+                            profileDir: authProfileDir
+                        });
                         db.active = db.accounts.length - 1;
                         saveDb(db);
-                        console.log(`[✅ DeepSeek] Аккаунт успешно перехвачен! Закрываю окно.`);
+                        console.log(`[✅ DeepSeek] Аккаунт и профиль сохранены! Закрываю окно.`);
                         await safeCloseBrowser(authBrowser);
                         isAuthInProgress = false;
                         isBrowserBusy = false;
@@ -436,16 +625,22 @@ function setupRoutes(app, port) {
 
             setTimeout(async () => {
                 if (!isAuthSuccess) {
-                    clearInterval(checkLogin);
-                    await safeCloseBrowser(authBrowser);
+                    if (checkLogin) clearInterval(checkLogin);
+                    if (authBrowser) await safeCloseBrowser(authBrowser);
                     isAuthInProgress = false;
                     if (!res.headersSent) res.status(408).json({ errorCode: 'ds_auth_timeout', error: 'Таймаут авторизации' });
                 }
             }, 5 * 60 * 1000);
 
         } catch (err) {
+            console.error('[❌ DeepSeek] Ошибка запуска окна авторизации:', err.message);
+            if (checkLogin) clearInterval(checkLogin);
+            if (authBrowser) await safeCloseBrowser(authBrowser);
             isAuthInProgress = false;
             if (!res.headersSent) res.status(500).json({ error: err.message });
+            if (getDb().accounts.length > 0) {
+                initProvider(currentPort).catch(() => { });
+            }
         }
     });
 }
@@ -459,8 +654,8 @@ async function checkAndHandleCaptcha(page) {
             return !!document.querySelector('#captcha-container') || (document.title && document.title.includes('Human Verification'));
         });
         if (isCaptchaPresent) {
-            console.log('[⚠️ DeepSeek] Обнаружена капча AWS WAF. Имитируем нажатие F5...');
-            await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => { }), page.keyboard.press('F5')]);
+            console.log('[⚠️ DeepSeek] Обнаружена капча AWS WAF. Перезагружаем страницу...');
+            await page.reload({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => { });
             await new Promise(r => setTimeout(r, 3000));
             return !(await page.evaluate(() => { return !!document.querySelector('#captcha-container') || (document.title && document.title.includes('Human Verification')); }));
         }
@@ -774,8 +969,10 @@ async function handleChatCompletion(req, res) {
 
         if (!inserted) {
             console.log('[⚠️ DeepSeek] Первый метод вставки не сработал, пробую Clipboard API...');
-            const context = browser.defaultBrowserContext();
-            await context.overridePermissions('https://chat.deepseek.com', ['clipboard-read', 'clipboard-write']);
+            try {
+                const context = browser.defaultBrowserContext();
+                await context.overridePermissions('https://chat.deepseek.com', ['clipboard-read', 'clipboard-write']);
+            } catch (e) { }
             await page.evaluate(async (text) => {
                 const textarea = document.querySelector('textarea');
                 if (!textarea) return;
@@ -834,13 +1031,14 @@ async function handleChatCompletion(req, res) {
 
         await page.keyboard.press('Enter');
 
+        const timeoutSec = Math.max(30, parseInt(currentSettings.providerSettings?.deepseek?.requestTimeoutSec) || 600);
         let failSafe = 0;
         while (!isFinished) {
             if (checkAborted()) throw new Error(checkAborted());
             await new Promise(r => setTimeout(r, 500));
             failSafe++;
             if (isStream && !res.writableEnded && failSafe % 10 === 0) res.write(`data: ${JSON.stringify({ id: "ping", object: "chat.completion.chunk", model: requestedModel, choices: [{ delta: {} }] })}\n\n`);
-            if (failSafe > 1200) {
+            if (failSafe > timeoutSec * 2) {
                 if (isDebug) console.log('[🐛 DEBUG] Таймаут генерации.');
                 break;
             }
@@ -850,6 +1048,10 @@ async function handleChatCompletion(req, res) {
 
         if (fullAnswer.trim() === '') {
             const pageError = await page.evaluate(() => {
+                const bodyText = document.body ? document.body.innerText : '';
+                if (bodyText.includes('You have signed out of your account') || bodyText.includes('please log in again') || window.location.href.includes('sign_in')) {
+                    return 'Сессия разлогинена (You have signed out). Авторизуйся заново через Авто-вход!';
+                }
                 const err = document.querySelector('.arco-message-error, .arco-message-content, [class*="toast"]');
                 return err ? err.innerText : null;
             });
@@ -923,7 +1125,8 @@ async function handleChatCompletion(req, res) {
 
             await new Promise(r => setTimeout(r, 1000));
 
-            if (sessionToKill) {
+            const autoDeleteChats = getSettings().providerSettings?.deepseek?.autoDeleteChats !== false;
+            if (sessionToKill && autoDeleteChats) {
                 // ДОЖИДАЕМСЯ УХОДА С ЧАТА ПЕРЕД УДАЛЕНИЕМ API (Фиксит ошибку "This chat has been deleted")
                 try {
                     await page.waitForFunction(() => window.location.href.endsWith('chat.deepseek.com/'), { timeout: 2000 });

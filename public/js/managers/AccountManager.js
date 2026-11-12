@@ -252,8 +252,16 @@ export class AccountManager {
                 settings.providerSettings.gemini.retryDelay = parseInt(document.getElementById('geminiSetDelay').value) || 2000;
             } else if (providerId === 'deepseek') {
                 if (!settings.providerSettings.deepseek) settings.providerSettings.deepseek = {};
+                settings.providerSettings.deepseek.browserId = document.getElementById('dsSetBrowserId').value;
+                settings.providerSettings.deepseek.executablePath = document.getElementById('dsSetExecutablePath').value.trim();
                 settings.providerSettings.deepseek.showBrowser = document.getElementById('dsSetShowBrowser').checked;
+                settings.providerSettings.deepseek.disableAutomationFlags = document.getElementById('dsSetDisableAutomationFlags').checked;
                 settings.providerSettings.deepseek.sendThink = document.getElementById('dsSetSendThink').checked;
+                settings.providerSettings.deepseek.autoDeleteChats = document.getElementById('dsSetAutoDeleteChats').checked;
+                settings.providerSettings.deepseek.blockResources = document.getElementById('dsSetBlockResources').checked;
+                settings.providerSettings.deepseek.disableGpu = document.getElementById('dsSetDisableGpu').checked;
+                settings.providerSettings.deepseek.proxyServer = document.getElementById('dsSetProxyServer').value.trim();
+                settings.providerSettings.deepseek.requestTimeoutSec = Math.max(30, parseInt(document.getElementById('dsSetTimeoutSec').value) || 600);
             } else if (providerId === 'gemini_api') {
                 if (!settings.providerSettings.gemini_api) settings.providerSettings.gemini_api = {};
 
@@ -671,6 +679,164 @@ export class AccountManager {
     // ==========================================
     // DEEPSEEK MANAGER
     // ==========================================
+    toggleDeepSeekCustomPath() {
+        const hiddenInput = document.getElementById('dsSetBrowserId');
+        const groupEl = document.getElementById('dsCustomPathGroup');
+        if (hiddenInput && groupEl) {
+            groupEl.style.display = hiddenInput.value === 'custom' ? 'flex' : 'none';
+        }
+    }
+
+    toggleDeepSeekBrowserMenu(event) {
+        if (event) event.stopPropagation();
+        const dropdown = document.getElementById('dsBrowserDropdown');
+        if (!dropdown) return;
+        dropdown.classList.toggle('open');
+
+        if (dropdown.classList.contains('open') && !this._dsOutsideClickBound) {
+            this._dsOutsideClickBound = true;
+            document.addEventListener('click', (e) => {
+                const dd = document.getElementById('dsBrowserDropdown');
+                if (dd && !dd.contains(e.target)) dd.classList.remove('open');
+            });
+        }
+    }
+
+    renderDeepSeekEngineNotes(opt) {
+        const box = document.getElementById('dsEngineProsCons');
+        if (!box || !window.t) return;
+
+        const key = opt.noteKey || 'chromium';
+        const pros = window.t(`ds_note_${key}_pro`, '');
+        const cons = window.t(`ds_note_${key}_con`, '');
+        if (!pros && !cons) {
+            box.style.display = 'none';
+            return;
+        }
+
+        box.className = `engine-info-box${key === 'gecko' ? ' warning' : ''}`;
+        box.innerHTML = `
+            <div class="engine-info-row"><span class="engine-info-sign plus">+</span><span>${pros}</span></div>
+            <div class="engine-info-row"><span class="engine-info-sign minus">−</span><span>${cons}</span></div>
+        `;
+        box.style.display = 'flex';
+    }
+
+    selectDeepSeekBrowser(id, label, meta = null) {
+        const hiddenInput = document.getElementById('dsSetBrowserId');
+        const labelEl = document.getElementById('dsBrowserDropdownLabel');
+        const dropdown = document.getElementById('dsBrowserDropdown');
+        const menuEl = document.getElementById('dsBrowserDropdownMenu');
+
+        if (hiddenInput) hiddenInput.value = id;
+        if (labelEl) labelEl.textContent = label;
+        if (dropdown) dropdown.classList.remove('open');
+        if (menuEl) {
+            menuEl.querySelectorAll('.custom-select-option').forEach(el => {
+                el.classList.toggle('selected', el.dataset.value === id);
+            });
+        }
+        if (meta) this.renderDeepSeekEngineNotes(meta);
+        this.toggleDeepSeekCustomPath();
+    }
+
+    async pickDeepSeekBrowserFile() {
+        const btn = document.getElementById('dsBrowseExeBtn');
+        const input = document.getElementById('dsSetExecutablePath');
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/system/pick-browser', { method: 'POST' });
+            const data = await res.json();
+            if (data.success && data.path) {
+                if (input) input.value = data.path;
+                this.modal.showToast(`Выбран файл (${data.engine === 'gecko' ? 'Gecko / BiDi' : 'Chromium'})`, 'success');
+            }
+        } catch (e) {
+            this.modal.showToast('Не удалось открыть окно выбора файла', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async loadDeepSeekBrowsers(forceRefresh = false, savedBrowserId = null) {
+        const hiddenInput = document.getElementById('dsSetBrowserId');
+        const menuEl = document.getElementById('dsBrowserDropdownMenu');
+        if (!hiddenInput || !menuEl) return;
+
+        const currentSelection = savedBrowserId || hiddenInput.value || 'auto';
+
+        try {
+            const res = await fetch(`/api/system/browsers${forceRefresh ? '?refresh=1' : ''}`);
+            const data = await res.json();
+            const browsers = Array.isArray(data.browsers) ? data.browsers : [];
+            const autoLabel = window.t ? window.t('ds_mode_auto', 'Автовыбор (лучший системный Chromium)') : 'Автовыбор (лучший системный Chromium)';
+            const customLabel = window.t ? window.t('ds_mode_custom', 'Свой путь к браузеру (.exe)') : 'Свой путь к браузеру (.exe)';
+
+            const options = [
+                {
+                    id: 'auto',
+                    label: `${autoLabel}${data.autoTarget ? ` → ${data.autoTarget.name}` : ''}`,
+                    badge: data.autoTarget ? (data.autoTarget.engine === 'gecko' ? 'Gecko / BiDi' : 'Chromium') : 'Auto',
+                    badgeClass: data.autoTarget && data.autoTarget.engine === 'gecko' ? 'gecko' : 'chromium',
+                    noteKey: data.autoTarget?.noteKey || 'chromium'
+                }
+            ];
+
+            for (const b of browsers) {
+                const displayName = b.isBundled
+                    ? (window.t ? window.t('ds_mode_chromium', b.name) : b.name)
+                    : b.name;
+                options.push({
+                    id: b.id,
+                    label: displayName,
+                    badge: b.engine === 'gecko' ? 'Gecko / BiDi' : 'Chromium',
+                    badgeClass: b.engine === 'gecko' ? 'gecko' : 'chromium',
+                    noteKey: b.noteKey || (b.engine === 'gecko' ? 'gecko' : (b.isBundled ? 'bundled' : 'chromium'))
+                });
+            }
+
+            options.push({
+                id: 'custom',
+                label: customLabel,
+                badge: 'EXE',
+                badgeClass: 'custom',
+                noteKey: 'custom'
+            });
+
+            menuEl.innerHTML = '';
+            for (const opt of options) {
+                const item = document.createElement('div');
+                item.className = 'custom-select-option';
+                item.dataset.value = opt.id;
+
+                const textSpan = document.createElement('span');
+                textSpan.textContent = opt.label;
+                textSpan.style.overflow = 'hidden';
+                textSpan.style.textOverflow = 'ellipsis';
+                textSpan.style.whiteSpace = 'nowrap';
+
+                const badgeSpan = document.createElement('span');
+                badgeSpan.className = `engine-badge ${opt.badgeClass}`;
+                badgeSpan.textContent = opt.badge;
+
+                item.appendChild(textSpan);
+                item.appendChild(badgeSpan);
+                item.onclick = () => this.selectDeepSeekBrowser(opt.id, opt.label, opt);
+                menuEl.appendChild(item);
+            }
+
+            const matched = options.find(o => o.id === currentSelection) || options[0];
+            this.selectDeepSeekBrowser(matched.id, matched.label, matched);
+
+            if (forceRefresh) {
+                this.modal.showToast(window.t ? window.t('ds_browsers_updated', 'Список браузеров обновлён') : 'Список браузеров обновлён', 'info');
+            }
+        } catch (e) {
+            console.error('Ошибка сканирования браузеров:', e);
+        }
+    }
+
     async openDeepSeekManager() {
         document.getElementById('deepseekModal').classList.add('active');
         document.getElementById('deepseekTabsContainer').style.display = 'flex';
@@ -680,9 +846,21 @@ export class AccountManager {
         try {
             const res = await fetch('/api/settings');
             const settings = await res.json();
-            const dsConfig = settings.providerSettings?.deepseek || { showBrowser: false, sendThink: true };
-            document.getElementById('dsSetShowBrowser').checked = dsConfig.showBrowser || false;
+            const dsConfig = settings.providerSettings?.deepseek || {};
+            const targetBrowserId = dsConfig.browserId || 'auto';
+
+            document.getElementById('dsSetExecutablePath').value = dsConfig.executablePath || '';
+            document.getElementById('dsSetShowBrowser').checked = Boolean(dsConfig.showBrowser);
+            document.getElementById('dsSetDisableAutomationFlags').checked = dsConfig.disableAutomationFlags !== false;
             document.getElementById('dsSetSendThink').checked = dsConfig.sendThink !== false;
+            document.getElementById('dsSetAutoDeleteChats').checked = dsConfig.autoDeleteChats !== false;
+            document.getElementById('dsSetBlockResources').checked = Boolean(dsConfig.blockResources);
+            document.getElementById('dsSetDisableGpu').checked = Boolean(dsConfig.disableGpu);
+            document.getElementById('dsSetProxyServer').value = dsConfig.proxyServer || '';
+            document.getElementById('dsSetTimeoutSec').value = dsConfig.requestTimeoutSec || 600;
+
+            await this.loadDeepSeekBrowsers(false, targetBrowserId);
+            this.toggleDeepSeekCustomPath();
         } catch (e) { }
     }
 

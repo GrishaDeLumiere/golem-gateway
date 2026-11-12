@@ -7,7 +7,7 @@ const DEFAULT_SETTINGS = {
     language: "ru_RU",
     providers: {
         deepseek: true,
-        qwen: true,
+        qwen: false,
         gemini: true,       // CLI / OAuth
         gemini_api: true    // Official Gemini API (Key-pool)
     },
@@ -33,7 +33,15 @@ const DEFAULT_SETTINGS = {
             safeImageDanger: true
         },
         deepseek: {
+            browserId: "auto",
+            executablePath: "",
             showBrowser: false,
+            disableAutomationFlags: true,
+            blockResources: false,
+            disableGpu: false,
+            autoDeleteChats: true,
+            proxyServer: "",
+            requestTimeoutSec: 600,
             sendThink: true
         }
     },

@@ -4,7 +4,15 @@ const express = require('express');
 const getProviders = require('./providers/index');
 const { getSettings, saveSettings } = require('./settings');
 const deepseekProvider = require('./providers/deepseek');
-const qwenProvider = require('./providers/qwen');
+let qwenProvider;
+try {
+    qwenProvider = require('./providers/qwen');
+} catch (err) {
+    qwenProvider = {
+        initProvider: async () => { },
+        unloadProvider: async () => { }
+    };
+}
 const geminiProvider = require('./providers/gemini');
 const axios = require('axios');
 const { runUpdateStream } = require('./updater');
@@ -41,9 +49,12 @@ class AuthInstaller {
 
                 try {
                     const dsStatusChanged = oldSettings.providers.deepseek !== updated.providers.deepseek;
-                    const dsBrowserChanged = oldSettings.providerSettings?.deepseek?.showBrowser !== updated.providerSettings?.deepseek?.showBrowser;
+                    const oldDs = oldSettings.providerSettings?.deepseek || {};
+                    const newDs = updated.providerSettings?.deepseek || {};
+                    const dsEngineChanged = ['browserId', 'executablePath', 'showBrowser', 'disableAutomationFlags', 'blockResources', 'disableGpu', 'proxyServer']
+                        .some(key => oldDs[key] !== newDs[key]);
 
-                    if (dsStatusChanged || dsBrowserChanged) {
+                    if (dsStatusChanged || dsEngineChanged) {
                         if (updated.providers.deepseek) await deepseekProvider.initProvider(this.port);
                         else await deepseekProvider.unloadProvider();
                     }

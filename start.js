@@ -10,8 +10,21 @@ const { getSettings } = require('./settings');
 const { version: APP_VERSION } = require(path.join(__dirname, 'package.json'));
 
 const AuthInstaller = require('./authInstaller');
+const browserScanner = require('./browserScanner');
 const deepseekProvider = require('./providers/deepseek');
-const qwenProvider = require('./providers/qwen');
+let qwenProvider;
+try {
+    qwenProvider = require('./providers/qwen');
+} catch (err) {
+    qwenProvider = {
+        MODELS: [],
+        setupRoutes: () => { },
+        initProvider: async () => console.log('[⚠️ Qwen] Отключён на переработку.'),
+        handleChatCompletion: async (req, res) => {
+            if (!res.headersSent) res.status(503).json({ error: { message: 'Провайдер Qwen временно отключён.' } });
+        }
+    };
+}
 const geminiProvider = require('./providers/gemini');
 const geminiApiProvider = require('./providers/gemini-interaction');
 
@@ -56,6 +69,7 @@ app.use(['/v1', '/chat/completions', '/models'], (req, res, next) => {
 
 const dashboard = new AuthInstaller(PORT);
 dashboard.setup(app);
+browserScanner.setupRoutes(app);
 
 const settings = getSettings();
 deepseekProvider.setupRoutes(app, PORT);

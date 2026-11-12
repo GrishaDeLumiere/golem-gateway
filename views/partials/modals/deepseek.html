@@ -43,20 +43,51 @@
       <!-- РАЗДЕЛ 2: НАСТРОЙКИ ДВИЖКА               -->
       <!-- ========================================= -->
       <div id="deepseekSettingsSection" class="animated-view" style="display: none;">
-        <div class="gemini-form-container">
+        <div class="gemini-form-container custom-scroll" style="max-height: 360px; overflow-y: auto; padding-right: 10px;">
           <h3 class="settings-group-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #3b82f6;">
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
               <line x1="8" y1="21" x2="16" y2="21"></line>
               <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
-            Параметры браузерного движка
+            <span data-i18n="ds_settings_title">Настройки движка (DeepSeek)</span>
           </h3>
+
+          <div class="gemini-form-group">
+            <label data-i18n="ds_set_browser_mode">Браузер движка</label>
+            <div style="display: flex; gap: 8px; align-items: stretch;">
+              <input type="hidden" id="dsSetBrowserId" value="auto">
+              <div class="custom-select" id="dsBrowserDropdown">
+                <button type="button" class="custom-select-trigger" onclick="window.app.accounts.toggleDeepSeekBrowserMenu(event)">
+                  <span class="custom-select-label" id="dsBrowserDropdownLabel">Загрузка...</span>
+                  <svg class="custom-select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="custom-select-menu custom-scroll" id="dsBrowserDropdownMenu"></div>
+              </div>
+              <button type="button" class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0 14px; flex-shrink: 0;" onclick="window.app.accounts.loadDeepSeekBrowsers(true)" title="Пересканировать систему">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="dsEngineProsCons" class="engine-info-box" style="display: none;"></div>
+          </div>
+
+          <div class="gemini-form-group" id="dsCustomPathGroup" style="display: none;">
+            <label for="dsSetExecutablePath" data-i18n="ds_set_exe_path">Путь к исполняемому файлу браузера</label>
+            <div style="display: flex; gap: 8px; align-items: stretch;">
+              <input type="text" id="dsSetExecutablePath" placeholder="C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" autocomplete="off" spellcheck="false" style="flex: 1; min-width: 0;">
+              <button type="button" class="btn btn-secondary" id="dsBrowseExeBtn" style="width: auto; margin-top: 0; padding: 0 16px; flex-shrink: 0; font-size: 13px;" onclick="window.app.accounts.pickDeepSeekBrowserFile()" data-i18n="ds_btn_browse">Обзор...</button>
+            </div>
+          </div>
 
           <div class="settings-card">
             <div class="settings-card-info">
-              <label class="settings-card-label" for="dsSetShowBrowser">Отображать процесс браузера</label>
-              <p class="settings-card-desc">Отключает Headless-режим. Вы сможете наблюдать за действиями автоматизации в реальном окне.</p>
+              <label class="settings-card-label" for="dsSetShowBrowser" data-i18n="ds_set_browser">Отображать браузер</label>
+              <p class="settings-card-desc" data-i18n="ds_set_browser_desc">Отключает скрытый (Headless) режим. Вы будете визуально видеть, как работает бот.</p>
             </div>
             <label class="switch">
               <input type="checkbox" id="dsSetShowBrowser">
@@ -66,18 +97,72 @@
 
           <div class="settings-card">
             <div class="settings-card-info">
-              <label class="settings-card-label" for="dsSetSendThink">Отправлять блок рассуждений</label>
-              <p class="settings-card-desc">Передавать клиенту теги <code>&lt;think&gt;</code>. Отключите, если вам нужен только чистый финальный ответ.</p>
+              <label class="settings-card-label" for="dsSetDisableAutomationFlags" data-i18n="ds_set_hide_auto">Скрывать флаг автоматизации</label>
+              <p class="settings-card-desc" data-i18n="ds_set_hide_auto_desc">Убирает параметр --enable-automation и предупреждение об управлении тестами.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetDisableAutomationFlags" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetSendThink" data-i18n="ds_set_think">Отправлять блок рассуждений</label>
+              <p class="settings-card-desc" data-i18n="ds_set_think_desc">Передавать клиенту теги <code>&lt;think&gt;</code>. Отключите, если нужен только финальный ответ.</p>
             </div>
             <label class="switch">
               <input type="checkbox" id="dsSetSendThink" checked>
               <span class="slider"></span>
             </label>
           </div>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetAutoDeleteChats" data-i18n="ds_set_autodelete">Авто-удаление чатов после ответа</label>
+              <p class="settings-card-desc" data-i18n="ds_set_autodelete_desc">Очищает историю диалога на сервере DeepSeek после завершения ответа.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetAutoDeleteChats" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetBlockResources" data-i18n="ds_set_block_res">Блокировать шрифты и аналитику</label>
+              <p class="settings-card-desc" data-i18n="ds_set_block_res_desc">Снижает нагрузку на CPU, но отключает трекер и шрифты. По умолчанию выключено против капчи.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetBlockResources">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetDisableGpu" data-i18n="ds_set_disable_gpu">Отключить аппаратный GPU/WebGL</label>
+              <p class="settings-card-desc" data-i18n="ds_set_disable_gpu_desc">Переводит рендер на CPU. По умолчанию выключено для сохранения живого отпечатка.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetDisableGpu">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="gemini-form-group">
+            <label for="dsSetProxyServer" data-i18n="ds_set_proxy">Прокси-сервер (необязательно)</label>
+            <input type="text" id="dsSetProxyServer" placeholder="http://127.0.0.1:10808" autocomplete="off" spellcheck="false">
+          </div>
+
+          <div class="gemini-form-group">
+            <label for="dsSetTimeoutSec" data-i18n="ds_set_timeout">Таймаут генерации (сек)</label>
+            <input type="number" id="dsSetTimeoutSec" min="30" max="3600" value="600">
+          </div>
         </div>
 
         <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 24px;" onclick="window.app.accounts.saveProviderSettings('deepseek', event)">Сохранить настройки</button>
+          <button class="btn btn-primary-solid" style="width: auto; padding: 10px 24px;" onclick="window.app.accounts.saveProviderSettings('deepseek', event)" data-i18n="gem_btn_save">Сохранить изменения</button>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 node_modules/
+deepseek_profiles/
 npm-debug.log
 .env
 .DS_Store

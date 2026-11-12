@@ -1,13 +1,9 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { PORT } = require('../config');
 const { getSettings } = require('../settings');
-
-puppeteer.use(StealthPlugin());
 
 let browser;
 let page;
