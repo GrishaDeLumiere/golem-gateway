@@ -130,6 +130,17 @@
 
           <div class="settings-card">
             <div class="settings-card-info">
+              <label class="settings-card-label" for="dsSetSendAsFile" data-i18n="ds_set_send_as_file">Упаковывать длинный текст в .txt файл</label>
+              <p class="settings-card-desc" data-i18n="ds_set_send_as_file_desc">Отправляет промпты длиннее 2000 символов как штатное .txt вложение DeepSeek без нагрузки на поле ввода.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dsSetSendAsFile">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-info">
               <label class="settings-card-label" for="dsSetBlockResources" data-i18n="ds_set_block_res">Блокировать шрифты и аналитику</label>
               <p class="settings-card-desc" data-i18n="ds_set_block_res_desc">Снижает нагрузку на CPU, но отключает трекер и шрифты. По умолчанию выключено против капчи.</p>
             </div>

@@ -173,6 +173,8 @@
   "ds_set_think_desc": "Forward <code>&lt;think&gt;</code> tags to the client. Disable to keep only the final answer.",
   "ds_set_autodelete": "Auto-delete Chats After Reply",
   "ds_set_autodelete_desc": "Deletes the conversation on DeepSeek servers after generation completes.",
+  "ds_set_send_as_file": "Pack Long Prompts into .txt File",
+  "ds_set_send_as_file_desc": "Sends prompts longer than 2000 characters as a native DeepSeek .txt attachment with zero input lag.",
   "ds_set_block_res": "Block Fonts and Analytics",
   "ds_set_block_res_desc": "Reduces CPU load, disables tracker and fonts. Disabled by default to prevent CAPTCHA.",
   "ds_set_disable_gpu": "Disable Hardware GPU/WebGL",
