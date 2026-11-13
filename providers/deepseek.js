@@ -335,9 +335,14 @@ async function initProviderCore(port = PORT) {
             await page.evaluateOnNewDocument((seed) => {
                 const nativeSignatures = new WeakMap();
                 const origToString = Function.prototype.toString;
-                const markNative = (fn, name) => {
+                const markNative = (fn, name, len = 0) => {
                     if (typeof fn === 'function') {
-                        nativeSignatures.set(fn, `function ${name || fn.name || ''}() { [native code] }`);
+                        const cleanName = name || fn.name || '';
+                        try {
+                            Object.defineProperty(fn, 'name', { value: cleanName, configurable: true });
+                            Object.defineProperty(fn, 'length', { value: len, configurable: true });
+                        } catch (e) { }
+                        nativeSignatures.set(fn, `function ${cleanName}() { [native code] }`);
                     }
                     return fn;
                 };
@@ -346,7 +351,7 @@ async function initProviderCore(port = PORT) {
                     if (nativeSignatures.has(this)) return nativeSignatures.get(this);
                     return origToString.apply(this, arguments);
                 };
-                markNative(stealthToString, 'toString');
+                markNative(stealthToString, 'toString', 0);
                 Function.prototype.toString = stealthToString;
 
                 let currentReqId = 0;
@@ -419,7 +424,7 @@ async function initProviderCore(port = PORT) {
                                 if (param === 37445) return spoofVendor;
                                 if (param === 37446) return spoofRenderer;
                                 return origGetParam.apply(this, arguments);
-                            }, 'getParameter');
+                            }, 'getParameter', 1);
                         }
                     }
 
@@ -431,7 +436,7 @@ async function initProviderCore(port = PORT) {
                             img.data[5] = (img.data[5] + shift) & 0xff;
                         }
                         return img;
-                    }, 'getImageData');
+                    }, 'getImageData', 4);
 
                     const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
                     HTMLCanvasElement.prototype.toDataURL = markNative(function (...a) {
@@ -444,7 +449,7 @@ async function initProviderCore(port = PORT) {
                             }
                         } catch (e) { }
                         return origToDataURL.apply(this, a);
-                    }, 'toDataURL');
+                    }, 'toDataURL', 0);
 
                     if (window.AudioBuffer && AudioBuffer.prototype.getChannelData) {
                         const origGetChannelData = AudioBuffer.prototype.getChannelData;
@@ -454,7 +459,7 @@ async function initProviderCore(port = PORT) {
                                 data[0] = data[0] + (shift * 1e-7);
                             }
                             return data;
-                        }, 'getChannelData');
+                        }, 'getChannelData', 1);
                     }
                 } catch (e) { }
 
@@ -465,7 +470,7 @@ async function initProviderCore(port = PORT) {
                 XMLHttpRequest.prototype.open = markNative(function (method, url) {
                     xhrMeta.set(this, { isTarget: (typeof url === 'string' && url.includes('completion')) });
                     return originalOpen.apply(this, arguments);
-                }, 'open');
+                }, 'open', 2);
 
                 XMLHttpRequest.prototype.send = markNative(function () {
                     const meta = xhrMeta.get(this);
@@ -488,7 +493,7 @@ async function initProviderCore(port = PORT) {
                         });
                     }
                     return originalSend.apply(this, arguments);
-                }, 'send');
+                }, 'send', 0);
 
                 const originalFetch = window.fetch;
                 window.fetch = markNative(async function (...args) {
@@ -522,7 +527,7 @@ async function initProviderCore(port = PORT) {
                         })();
                     }
                     return response;
-                }, 'fetch');
+                }, 'fetch', 1);
             }, profileSeed);
 
             const hasExistingProfile = fs.existsSync(path.join(profileDir, 'Default', 'Network', 'Cookies'))
@@ -864,7 +869,34 @@ async function nativeMouseClick(page, box) {
     return true;
 }
 
+async function ensureSidebarExpanded(page) {
+    const expandBtnBox = await page.evaluate(() => {
+        // Проверяем, видна ли развернутая панель с кнопкой «Новый чат»
+        const spans = Array.from(document.querySelectorAll('span, div'));
+        for (const el of spans) {
+            if (el.children.length === 0 && (el.textContent?.trim() === 'Новый чат' || el.textContent?.trim() === 'New chat')) {
+                const r = (el.closest('[tabindex="0"], [role="button"]') || el).getBoundingClientRect();
+                if (r.width > 20 && r.height > 10) return null; // Уже развернута
+            }
+        }
+        // Если свернута — ищем кнопку разворачивания в левой узкой полоске (.e5bf614e) или в шапке (.the-header)
+        const toggleBtn = document.querySelector('.e5bf614e [role="button"], ._1aa2651.the-header [role="button"]');
+        if (!toggleBtn) return null;
+        const r = toggleBtn.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
+        return null;
+    });
+
+    if (expandBtnBox) {
+        await nativeMouseClick(page, expandBtnBox);
+        await new Promise(r => setTimeout(r, 240));
+    }
+}
+
 async function clickNewChatViaUI(page) {
+    await ensureSidebarExpanded(page);
     const box = await page.evaluate(() => {
         const spans = Array.from(document.querySelectorAll('span, div'));
         for (const el of spans) {
@@ -889,6 +921,7 @@ async function clickNewChatViaUI(page) {
 
 async function deleteChatViaUI(page, sessionId) {
     try {
+        await ensureSidebarExpanded(page);
         const chatCoords = await page.evaluate((sid) => {
             const links = Array.from(document.querySelectorAll('a[href*="/chat/s/"]'));
             const targetLink = (sid ? links.find(a => a.getAttribute('href')?.includes(sid)) : null) || links[0];
@@ -1310,6 +1343,24 @@ async function handleChatCompletion(req, res) {
             promptText = 'Опиши это изображение подробно.';
         }
 
+        // Очищаем оставшиеся с прошлых прерванных запросов черновики вложений (._25c7358 ._8402d8c)
+        const staleAttachmentBoxes = await page.evaluate(() => {
+            const closeBtns = Array.from(document.querySelectorAll('._25c7358 ._8402d8c, [class*="dafb6286"] [tabindex="0"]'));
+            const boxes = [];
+            for (const btn of closeBtns) {
+                const r = btn.getBoundingClientRect();
+                if (r.width > 8 && r.width < 36 && r.height > 8 && r.height < 36) {
+                    boxes.push({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+                }
+            }
+            return boxes;
+        });
+
+        for (const closeBox of staleAttachmentBoxes) {
+            await nativeMouseClick(page, closeBox);
+            await new Promise(r => setTimeout(r, 120));
+        }
+
         const taInfo = await page.evaluate(() => {
             const ta = document.querySelector('textarea');
             if (!ta) return null;
@@ -1456,6 +1507,18 @@ async function handleChatCompletion(req, res) {
             }
         } else {
             await page.keyboard.press('Enter');
+            await new Promise(r => setTimeout(r, 250));
+            const fallbackSendBox = await page.evaluate(() => {
+                const ta = document.querySelector('textarea');
+                if (!ta || ta.value.trim().length === 0) return null;
+                const sendBtn = document.querySelector('.ds-button--circle.ds-button--primary:not(.ds-button--disabled)');
+                if (!sendBtn) return null;
+                const r = sendBtn.getBoundingClientRect();
+                return (r.width > 0 && r.height > 0) ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+            });
+            if (fallbackSendBox) {
+                await nativeMouseClick(page, fallbackSendBox);
+            }
         }
 
         const timeoutSec = Math.max(30, parseInt(currentSettings.providerSettings?.deepseek?.requestTimeoutSec) || 600);
