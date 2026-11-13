@@ -213,7 +213,8 @@ async function initProviderCore(port = PORT) {
                 }
             });
 
-            page = await browser.newPage();
+            const existingPages = await browser.pages();
+            page = existingPages[0] || await browser.newPage();
 
             if (isVisible) {
                 await browserScanner.ensureWindowVisible(browser, page, 1280, 800);
@@ -320,8 +321,11 @@ async function initProviderCore(port = PORT) {
                 };
             });
 
+            const hasExistingProfile = fs.existsSync(path.join(profileDir, 'Default', 'Network', 'Cookies'))
+                || fs.existsSync(path.join(profileDir, 'Default', 'Cookies'));
+
             const cookiesRaw = accCookies || '';
-            if (cookiesRaw) {
+            if (!hasExistingProfile && cookiesRaw) {
                 const cookies = cookiesRaw.split(';').map(pair => {
                     const index = pair.indexOf('=');
                     if (index === -1) return null;
@@ -343,11 +347,14 @@ async function initProviderCore(port = PORT) {
                 } catch (e) { }
             }
 
+            // Подставляем токен из базы только если в профиле браузера его ещё нет и мы не на странице входа
             if (accToken) {
                 await page.evaluateOnNewDocument((tokenText) => {
-                    let t = tokenText.replace(/^['"]|['"]$/g, '');
-                    try { let parsed = JSON.parse(t); if (parsed.value) t = parsed.value; } catch (e) { }
-                    localStorage.setItem('userToken', JSON.stringify({ value: t, __version: "0" }));
+                    if (!localStorage.getItem('userToken') && !window.location.href.includes('sign_in')) {
+                        let t = tokenText.replace(/^['"]|['"]$/g, '');
+                        try { let parsed = JSON.parse(t); if (parsed.value) t = parsed.value; } catch (e) { }
+                        localStorage.setItem('userToken', JSON.stringify({ value: t, __version: "0" }));
+                    }
                 }, accToken);
             }
 
@@ -355,15 +362,39 @@ async function initProviderCore(port = PORT) {
             await page.goto('https://chat.deepseek.com', { waitUntil: 'domcontentloaded', timeout: 45000 });
             await new Promise(r => setTimeout(r, 2500));
 
+            // Авто-синхронизация: если вошли в другой аккаунт прямо в открытом браузере — сохраняем его в базу
+            page.on('framenavigated', async (frame) => {
+                if (frame !== page.mainFrame()) return;
+                const url = frame.url();
+                if (!url.startsWith('https://chat.deepseek.com') || url.includes('/sign_in') || url.includes('/authorized')) return;
+                try {
+                    const rawToken = await page.evaluate(() => localStorage.getItem('userToken'));
+                    if (!rawToken) return;
+                    let cleanToken = rawToken;
+                    try {
+                        const parsed = JSON.parse(rawToken);
+                        if (parsed && parsed.value) cleanToken = parsed.value;
+                    } catch (e) { }
+                    const currentDb = getDb();
+                    const currAcc = currentDb.accounts[currentDb.active] || currentDb.accounts[0];
+                    if (currAcc && cleanToken && currAcc.token !== cleanToken) {
+                        const freshCookies = typeof page.cookies === 'function'
+                            ? await page.cookies()
+                            : await browser.cookies();
+                        currAcc.token = cleanToken;
+                        currAcc.cookies = freshCookies.map(c => `${c.name}=${c.value}`).join('; ');
+                        currAcc.profileDir = profileDir;
+                        saveDb(currentDb);
+                        console.log('[🔑 DeepSeek] Выполнен вход в новый аккаунт прямо в окне браузера — сессия автоматически обновлена!');
+                    }
+                } catch (e) { }
+            });
+
             const captchaCleared = await checkAndHandleCaptcha(page);
             if (!captchaCleared) console.log('[⚠️ DeepSeek] Внимание: Капча AWS WAF не была пройдена.');
 
             if (page.url().includes('sign_in')) {
-                console.error('[❌ DeepSeek] Сессия протухла. Начинаю сброс...');
-                await safeCloseBrowser(browser);
-                browser = null;
-                renewAuth();
-                throw new Error("Session expired");
+                console.warn('[⚠️ DeepSeek] На текущем профиле выполнен выход из аккаунта. Окно браузера оставлено открытым — можно войти прямо в нём!');
             }
 
             console.log(`[✨ DeepSeek] Голем на позиции (${browserInfo.name}). Алгоритм активен. Fetch/XHR инжектирован.`);
@@ -453,10 +484,20 @@ function setupRoutes(app, port) {
         let authBrowser = null;
 
         try {
+            if (browser) {
+                await safeCloseBrowser(browser);
+                browser = null;
+                page = null;
+                isBrowserBusy = false;
+            }
+
             const dsConfig = (typeof getSettings === 'function' ? getSettings() : {}).providerSettings?.deepseek || {};
+            const authProfileDir = path.join(__dirname, '../deepseek_profiles', `profile_${Date.now()}`);
+            if (!fs.existsSync(authProfileDir)) fs.mkdirSync(authProfileDir, { recursive: true });
+
             const { browserInfo, launchOptions: authLaunchOptions } = await browserScanner.buildLaunchOptions({
                 config: dsConfig,
-                userDataDir: undefined,
+                userDataDir: authProfileDir,
                 headless: false,
                 width: 1200,
                 height: 800,
@@ -509,7 +550,8 @@ function setupRoutes(app, port) {
                         db.accounts.push({
                             name: `Профиль #${db.accounts.length + 1}`,
                             token: tokenData.replace(/(^"|"$)/g, ''),
-                            cookies: cookiesStr
+                            cookies: cookiesStr,
+                            profileDir: authProfileDir
                         });
                         db.active = db.accounts.length - 1;
                         saveDb(db);
