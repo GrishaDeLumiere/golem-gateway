@@ -1,28 +1,49 @@
 export class UpdateManager {
     async check() {
-        document.getElementById('updateModal').classList.add('active');
-        document.getElementById('updateMessageText').innerText = window.t ? window.t('upd_loading', 'Связываемся с сервером...') : 'Связываемся с сервером...';
-        document.getElementById('updateLoader').style.display = 'flex';
-        document.getElementById('updateVersions').style.display = 'none';
-        document.getElementById('changelogContainer').style.display = 'none';
-        document.getElementById('startUpdateBtn').style.display = 'none';
-        document.getElementById('forceUpdateDiv').style.display = 'none';
-
+        const modal = document.getElementById('updateModal');
+        const msgEl = document.getElementById('updateMessageText');
+        const loaderEl = document.getElementById('updateLoader');
+        const statusDotEl = document.getElementById('updateStatusDot');
+        const bannerEl = document.getElementById('updateStatusBanner');
+        const versionsEl = document.getElementById('updateVersions');
+        const changelogContainer = document.getElementById('changelogContainer');
+        const startBtn = document.getElementById('startUpdateBtn');
+        const forceBtn = document.getElementById('forceUpdateDiv');
         const actionsDiv = document.getElementById('updateActions');
+
+        modal.classList.add('active');
+        msgEl.innerText = window.t ? window.t('upd_loading', 'Связываемся с сервером...') : 'Связываемся с сервером...';
+        loaderEl.style.display = 'flex';
+        if (statusDotEl) statusDotEl.style.display = 'none';
+        if (bannerEl) bannerEl.style.borderColor = 'var(--border)';
+
+        versionsEl.style.display = 'none';
+        changelogContainer.style.display = 'none';
+        startBtn.style.display = 'none';
+        forceBtn.style.display = 'none';
+
         actionsDiv.style.opacity = '0';
         actionsDiv.style.pointerEvents = 'none';
 
         try {
             const response = await fetch('/api/check-update');
             const data = await response.json();
+            if (!response.ok || data.error) {
+                throw new Error(data.error || 'Server error');
+            }
 
-            document.getElementById('updateLoader').style.display = 'none';
-            document.getElementById('updateVersions').style.display = 'flex';
+            loaderEl.style.display = 'none';
+            if (statusDotEl) {
+                statusDotEl.style.display = 'block';
+                statusDotEl.className = 'pulse-dot auth';
+            }
+
+            versionsEl.style.display = 'grid';
             document.getElementById('verCurrent').innerText = 'v' + data.currentVersion;
             document.getElementById('verLatest').innerText = 'v' + data.latestVersion;
 
             if (data.changelog) {
-                document.getElementById('changelogContainer').style.display = 'block';
+                changelogContainer.style.display = 'block';
                 document.getElementById('changelogContent').innerHTML = data.changelog;
                 if (data.releases) {
                     document.getElementById('releasesContent').innerHTML = data.releases;
@@ -34,19 +55,26 @@ export class UpdateManager {
             actionsDiv.style.pointerEvents = 'auto';
 
             if (data.updateAvailable) {
-                document.getElementById('updateMessageText').innerHTML = window.t('upd_available', 'Доступна новая версия ядра AI Core Gateway.');
-                document.getElementById('startUpdateBtn').style.display = 'inline-flex';
-                document.getElementById('forceUpdateDiv').style.display = 'none';
+                msgEl.innerHTML = window.t ? window.t('upd_available', 'Доступна новая версия ядра AI Core Gateway.') : 'Доступна новая версия ядра AI Core Gateway.';
+                startBtn.style.display = 'inline-flex';
+                forceBtn.style.display = 'none';
                 document.getElementById('verLatest').style.color = 'var(--success)';
+                if (bannerEl) bannerEl.style.borderColor = 'rgba(16, 185, 129, 0.35)';
             } else {
-                document.getElementById('updateMessageText').innerHTML = window.t('upd_actual', 'Вы используете самую актуальную версию.');
-                document.getElementById('startUpdateBtn').style.display = 'none';
-                document.getElementById('forceUpdateDiv').style.display = 'block';
+                msgEl.innerHTML = window.t ? window.t('upd_actual', 'Вы используете самую актуальную версию.') : 'Вы используете самую актуальную версию.';
+                startBtn.style.display = 'none';
+                forceBtn.style.display = 'inline-flex';
                 document.getElementById('verLatest').style.color = 'var(--text-muted)';
+                if (bannerEl) bannerEl.style.borderColor = 'rgba(255, 255, 255, 0.08)';
             }
         } catch (err) {
-            document.getElementById('updateLoader').style.display = 'none';
-            document.getElementById('updateMessageText').innerHTML = window.t('upd_error', 'Ошибка связи. Сервер обновлений недоступен.');
+            loaderEl.style.display = 'none';
+            if (statusDotEl) {
+                statusDotEl.style.display = 'block';
+                statusDotEl.className = 'pulse-dot no-auth';
+            }
+            if (bannerEl) bannerEl.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+            msgEl.innerHTML = window.t ? window.t('upd_error', 'Ошибка связи. Сервер обновлений недоступен.') : 'Ошибка связи. Сервер обновлений недоступен.';
             actionsDiv.style.opacity = '1';
             actionsDiv.style.pointerEvents = 'auto';
         }
@@ -58,21 +86,12 @@ export class UpdateManager {
         const contentCommits = document.getElementById('changelogContent');
         const contentReleases = document.getElementById('releasesContent');
 
-        if (tabName === 'commits') {
-            btnCommits.style.color = 'var(--accent)';
-            btnCommits.style.fontWeight = '600';
-            btnReleases.style.color = 'var(--text-muted)';
-            btnReleases.style.fontWeight = 'normal';
-            contentCommits.style.display = 'block';
-            contentReleases.style.display = 'none';
-        } else {
-            btnReleases.style.color = 'var(--accent)';
-            btnReleases.style.fontWeight = '600';
-            btnCommits.style.color = 'var(--text-muted)';
-            btnCommits.style.fontWeight = 'normal';
-            contentReleases.style.display = 'block';
-            contentCommits.style.display = 'none';
-        }
+        const isCommits = tabName === 'commits';
+        btnCommits.classList.toggle('active', isCommits);
+        btnReleases.classList.toggle('active', !isCommits);
+
+        contentCommits.style.display = isCommits ? 'block' : 'none';
+        contentReleases.style.display = isCommits ? 'none' : 'block';
     }
 
     openWindow() {
