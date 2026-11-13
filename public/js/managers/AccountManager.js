@@ -258,7 +258,6 @@ export class AccountManager {
                 settings.providerSettings.deepseek.disableAutomationFlags = document.getElementById('dsSetDisableAutomationFlags').checked;
                 settings.providerSettings.deepseek.sendThink = document.getElementById('dsSetSendThink').checked;
                 settings.providerSettings.deepseek.autoDeleteChats = document.getElementById('dsSetAutoDeleteChats').checked;
-                settings.providerSettings.deepseek.sendAsFile = document.getElementById('dsSetSendAsFile').checked;
                 settings.providerSettings.deepseek.blockResources = document.getElementById('dsSetBlockResources').checked;
                 settings.providerSettings.deepseek.disableGpu = document.getElementById('dsSetDisableGpu').checked;
                 settings.providerSettings.deepseek.proxyServer = document.getElementById('dsSetProxyServer').value.trim();
@@ -855,9 +854,8 @@ export class AccountManager {
             document.getElementById('dsSetDisableAutomationFlags').checked = dsConfig.disableAutomationFlags !== false;
             document.getElementById('dsSetSendThink').checked = dsConfig.sendThink !== false;
             document.getElementById('dsSetAutoDeleteChats').checked = dsConfig.autoDeleteChats !== false;
-            document.getElementById('dsSetSendAsFile').checked = Boolean(dsConfig.sendAsFile);
-            document.getElementById('dsSetBlockResources').checked = Boolean(dsConfig.blockResources);
-            document.getElementById('dsSetDisableGpu').checked = Boolean(dsConfig.disableGpu);
+            document.getElementById('dsSetBlockResources').checked = dsConfig.blockResources !== false;
+            document.getElementById('dsSetDisableGpu').checked = dsConfig.disableGpu !== false;
             document.getElementById('dsSetProxyServer').value = dsConfig.proxyServer || '';
             document.getElementById('dsSetTimeoutSec').value = dsConfig.requestTimeoutSec || 600;
 

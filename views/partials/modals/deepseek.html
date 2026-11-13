@@ -130,22 +130,11 @@
 
           <div class="settings-card">
             <div class="settings-card-info">
-              <label class="settings-card-label" for="dsSetSendAsFile" data-i18n="ds_set_send_as_file">Упаковывать длинный текст в .txt файл</label>
-              <p class="settings-card-desc" data-i18n="ds_set_send_as_file_desc">Отправляет промпты длиннее 2000 символов как штатное .txt вложение DeepSeek без нагрузки на поле ввода.</p>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="dsSetSendAsFile">
-              <span class="slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-card">
-            <div class="settings-card-info">
               <label class="settings-card-label" for="dsSetBlockResources" data-i18n="ds_set_block_res">Блокировать шрифты и аналитику</label>
-              <p class="settings-card-desc" data-i18n="ds_set_block_res_desc">Снижает нагрузку на CPU, но отключает трекер и шрифты. По умолчанию выключено против капчи.</p>
+              <p class="settings-card-desc" data-i18n="ds_set_block_res_desc">Отключает загрузку тяжелых шрифтов, медиа и трекеров для экономии CPU и RAM.</p>
             </div>
             <label class="switch">
-              <input type="checkbox" id="dsSetBlockResources">
+              <input type="checkbox" id="dsSetBlockResources" checked>
               <span class="slider"></span>
             </label>
           </div>
@@ -153,10 +142,10 @@
           <div class="settings-card">
             <div class="settings-card-info">
               <label class="settings-card-label" for="dsSetDisableGpu" data-i18n="ds_set_disable_gpu">Отключить аппаратный GPU/WebGL</label>
-              <p class="settings-card-desc" data-i18n="ds_set_disable_gpu_desc">Переводит рендер на CPU. По умолчанию выключено для сохранения живого отпечатка.</p>
+              <p class="settings-card-desc" data-i18n="ds_set_disable_gpu_desc">Добавляет флаги --disable-gpu и --disable-accelerated-2d-canvas (как в старой версии).</p>
             </div>
             <label class="switch">
-              <input type="checkbox" id="dsSetDisableGpu">
+              <input type="checkbox" id="dsSetDisableGpu" checked>
               <span class="slider"></span>
             </label>
           </div>

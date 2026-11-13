@@ -311,22 +311,27 @@ function scanLinuxBrowsers() {
 }
 
 async function getBundledChromium(puppeteerLib) {
-    try {
-        const lib = puppeteerLib || require('rebrowser-puppeteer');
-        if (lib && typeof lib.executablePath === 'function') {
-            const bundledPath = await Promise.resolve(lib.executablePath());
-            if (typeof bundledPath === 'string' && bundledPath && fs.existsSync(bundledPath)) {
-                return {
-                    id: 'bundled-chromium',
-                    name: 'Встроенный Chromium (Puppeteer)',
-                    path: bundledPath,
-                    engine: 'chromium',
-                    noteKey: 'bundled',
-                    isBundled: true
-                };
+    const candidates = [puppeteerLib];
+    try { candidates.push(require('puppeteer')); } catch (e) { }
+    try { candidates.push(require('rebrowser-puppeteer')); } catch (e) { }
+
+    for (const lib of candidates) {
+        try {
+            if (lib && typeof lib.executablePath === 'function') {
+                const bundledPath = await Promise.resolve(lib.executablePath());
+                if (typeof bundledPath === 'string' && bundledPath && fs.existsSync(bundledPath)) {
+                    return {
+                        id: 'bundled-chromium',
+                        name: 'Встроенный Chromium (Puppeteer)',
+                        path: bundledPath,
+                        engine: 'chromium',
+                        noteKey: 'bundled',
+                        isBundled: true
+                    };
+                }
             }
-        }
-    } catch (e) { }
+        } catch (e) { }
+    }
     return null;
 }
 
@@ -442,58 +447,57 @@ async function buildLaunchOptions({ config = {}, userDataDir, headless = true, w
         return { browserInfo, launchOptions };
     }
 
-    if (userDataDir) {
-        try {
-            if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-            const firstRunFile = path.join(userDataDir, 'First Run');
-            if (!fs.existsSync(firstRunFile)) fs.writeFileSync(firstRunFile, '');
-        } catch (e) { }
-    }
-
     const disableAutomationFlags = config.disableAutomationFlags !== false;
-    const disableGpu = Boolean(config.disableGpu);
+    const disableGpu = config.disableGpu !== false;
 
+    // Старый проверенный набор аргументов запуска Chromium
     const launchArgs = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
         '--disable-blink-features=AutomationControlled',
         `--window-size=${width},${height}`,
+        '--disable-dev-shm-usage',
         '--mute-audio',
         '--no-first-run',
-        '--no-default-browser-check'
+        '--no-zygote',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-domain-reliability',
+        '--disable-extensions',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--safebrowsing-disable-auto-update'
     ];
-
-    if (process.platform !== 'win32') {
-        launchArgs.push('--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage');
-    }
 
     if (disableGpu) {
         launchArgs.push(
             '--disable-gpu',
-            '--disable-accelerated-2d-canvas'
+            '--disable-accelerated-2d-canvas',
+            '--disable-gl-drawing-for-tests'
         );
     }
 
-    if (!headless) {
-        launchArgs.push('--window-position=100,80');
-    }
     if (proxyServer) {
         launchArgs.push(`--proxy-server=${proxyServer}`);
     }
 
     const launchOptions = {
-        headless: Boolean(headless),
-        pipe: false,
+        headless: headless ? 'new' : false,
         userDataDir,
-        timeout: 25000,
         args: launchArgs,
         defaultViewport: null
     };
+
     if (disableAutomationFlags) {
         launchOptions.ignoreDefaultArgs = ['--enable-automation'];
     }
     if (browserInfo.path) {
         launchOptions.executablePath = browserInfo.path;
-    } else {
-        launchOptions.browser = 'chrome';
     }
 
     return { browserInfo, launchOptions };
@@ -592,10 +596,6 @@ async function ensureWindowVisible(browserInstance, pageInstance, width = 1280, 
     try {
         const cdp = await pageInstance.createCDPSession();
         const { windowId } = await cdp.send('Browser.getWindowForTarget');
-        await cdp.send('Browser.setWindowBounds', {
-            windowId,
-            bounds: { windowState: 'minimized' }
-        }).catch(() => { });
         await cdp.send('Browser.setWindowBounds', {
             windowId,
             bounds: { windowState: 'normal', left: 100, top: 80, width, height }
